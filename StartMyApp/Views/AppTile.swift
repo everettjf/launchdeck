@@ -21,15 +21,19 @@ struct AppTile: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Button(action: { appState.launch(app) }) {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     AppIcon(image: icon, size: preferences.gridScale.iconSize)
                     Text(app.name)
                         .font(.system(size: preferences.gridScale.labelFontSize, weight: .semibold))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 4)
                         .frame(maxWidth: .infinity)
+                        .frame(height: titleHeight, alignment: .top)
                 }
-                .padding(16)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 12)
                 .frame(width: tileWidth)
                 .background(tileBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -44,7 +48,8 @@ struct AppTile: View {
                     appState.toggleFavorite(for: app)
                 }
             }
-            .padding(12)
+            .padding(.top, 8)
+            .padding(.trailing, 8)
             .opacity(isHovering || appState.isFavorite(app) ? 1 : 0)
             .animation(.easeInOut(duration: 0.18), value: isHovering || appState.isFavorite(app))
         }
@@ -140,6 +145,14 @@ struct AppTile: View {
         return 1.0
     }
 
+    private var titleHeight: CGFloat {
+        switch preferences.gridScale {
+        case .compact: return 28
+        case .comfortable: return 32
+        case .spacious: return 38
+        }
+    }
+
     private func loadIcon() {
         AppIconCache.shared.icon(for: app.path, size: preferences.gridScale.iconSize) { image in
             icon = image
@@ -163,22 +176,22 @@ private struct SizeReader: View {
     }
 }
 
-private struct FavoriteToggleButton: View {
-    var isFavorite: Bool
-    var action: () -> Void
+    private struct FavoriteToggleButton: View {
+        var isFavorite: Bool
+        var action: () -> Void
 
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: isFavorite ? "star.fill" : "star")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
-                .padding(6)
-                .background(.thinMaterial, in: Circle())
+        var body: some View {
+            Button(action: action) {
+                Image(systemName: isFavorite ? "star.fill" : "star")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
+                    .padding(4)
+                    .background(.thinMaterial, in: Circle())
+            }
+            .buttonStyle(.borderless)
+            .help(isFavorite ? "Remove from Favorites" : "Add to Favorites")
         }
-        .buttonStyle(.borderless)
-        .help(isFavorite ? "Remove from Favorites" : "Add to Favorites")
     }
-}
 
 private struct AppIcon: View {
     var image: NSImage?
