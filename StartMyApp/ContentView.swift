@@ -1,59 +1,198 @@
-//
-//  ContentView.swift
-//  StartMyApp
-//
-//  Created by eevv on 9/30/25.
-//
-
+import Combine
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var preferences: AppPreferences
+
+    @FocusState private var isSearchFieldFocused: Bool
+    @State private var searchText: String = ""
+    @State private var focusCancellable: AnyCancellable?
+    @State private var didAppear = false
+
+    private var searchResults: [DiscoveredApp] {
+        appState.appsMatchingSearch()
+    }
+
+    private var favoriteApps: [DiscoveredApp] {
+        appState.favoriteApps()
+    }
+
+    private var recentApps: [DiscoveredApp] {
+        appState.recentApps()
+    }
+
+    private var allApps: [DiscoveredApp] {
+        appState.allApps()
+    }
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        ZStack {
+            VisualEffectBackground()
+            mainContent
+        }
+        .onAppear(perform: configure)
+        .onDisappear { focusCancellable?.cancel() }
+        .onChange(of: searchText) { newValue in
+            if appState.searchQuery != newValue {
+                appState.searchQuery = newValue
+            }
+        }
+        .onReceive(appState.$searchQuery.removeDuplicates()) { incoming in
+            if searchText != incoming {
+                searchText = incoming
+            }
+        }
+        .animation(.spring(response: 0.65, dampingFraction: 0.82), value: didAppear)
+    }
+
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+                .opacity(0.25)
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 36) {
+                    if searchText.isEmpty {
+                        if !favoriteApps.isEmpty {
+                            AppGridSection(title: "Favorites",
+                                            subtitle: "Apps you launch most",
+                                            apps: favoriteApps)
+                        }
+                        if !recentApps.isEmpty {
+                            AppGridSection(title: "Recently Launched",
+                                            subtitle: "Last opened ordered by recency",
+                                            apps: recentApps) {
+                                Button("Clear") {
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        appState.clearRecents()
+                                    }
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundColor(.secondary)
+                                .help("Clear recently launched apps")
+                            }
+                        }
+                        AppGridSection(title: "All Applications",
+                                        subtitle: "Every installed app we could find",
+                                        apps: allApps,
+                                        emptyState: "No applications were found on this Mac.")
+                    } else {
+                        if searchResults.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("No results")
+                                    .font(.title3.weight(.semibold))
+                                Text("Try searching by category, developer, or bundle identifier.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.top, 32)
+                        } else {
+                            AppGridSection(title: "Search",
+                                            subtitle: searchSubtitle(for: searchResults.count),
+                                            apps: searchResults)
+                        }
                     }
                 }
-                .onDelete(perform: deleteItems)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 32)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
+        }
+        .opacity(didAppear ? 1 : 0)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.4)) {
+                didAppear = true
             }
-        } detail: {
-            Text("Select an item")
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+    private var header: some View {
+        HStack(spacing: 12) {
+            searchField
+                .frame(maxWidth: 420)
+            Spacer()
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .imageScale(.large)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+            }
+            Button {
+                appState.refreshApps()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .imageScale(.medium)
+            }
+            .buttonStyle(.bordered)
+            .help("Rescan installed applications")
         }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 18)
+        .background(.ultraThickMaterial)
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search apps, categories, or developers", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 16, weight: .medium))
+                .focused($isSearchFieldFocused)
+                .onSubmit(launchTopResult)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search text")
             }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.regularMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isSearchFieldFocused ? Color.accentColor.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1.2)
+        )
+        .shadow(color: Color.black.opacity(isSearchFieldFocused ? 0.2 : 0.08), radius: isSearchFieldFocused ? 10 : 5, x: 0, y: 4)
+    }
+
+    private func searchSubtitle(for count: Int) -> String {
+        count == 1 ? "1 result" : "\(count) results"
+    }
+
+    private func launchTopResult() {
+        guard let app = searchResults.first else { return }
+        appState.launch(app)
+    }
+
+    private func configure() {
+        searchText = appState.searchQuery
+        focusCancellable = appState.searchFocusPublisher
+            .receive(on: RunLoop.main)
+            .sink { _ in
+                isSearchFieldFocused = true
+            }
     }
 }
 
 #Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+    let preferences = AppPreferences()
+    let state = AppState(preferences: preferences)
+    return ContentView()
+        .environmentObject(state)
+        .environmentObject(preferences)
 }

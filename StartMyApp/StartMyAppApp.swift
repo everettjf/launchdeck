@@ -1,32 +1,47 @@
-//
-//  StartMyAppApp.swift
-//  StartMyApp
-//
-//  Created by eevv on 9/30/25.
-//
-
 import SwiftUI
-import SwiftData
 
 @main
 struct StartMyAppApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    @StateObject private var preferences: AppPreferences
+    @StateObject private var appState: AppState
 
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    init() {
+        let preferences = AppPreferences()
+        _preferences = StateObject(wrappedValue: preferences)
+        _appState = StateObject(wrappedValue: AppState(preferences: preferences))
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(appState)
+                .environmentObject(preferences)
+                .frame(minWidth: 720, minHeight: 520)
         }
-        .modelContainer(sharedModelContainer)
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Refresh Applications", action: appState.refreshApps)
+                    .keyboardShortcut("r", modifiers: [.command])
+                Toggle("Show System Applications", isOn: $preferences.showSystemApps)
+                Divider()
+                Picker("Grid Size", selection: $preferences.gridScale) {
+                    ForEach(AppPreferences.GridScale.allCases, id: \.self) { scale in
+                        Text(scale.title).tag(scale)
+                    }
+                }
+                Divider()
+                Button("Clear Recent Launches", action: appState.clearRecents)
+            }
+            CommandMenu("Focus") {
+                Button("Focus Search") {
+                    appState.postSearchFocusRequest()
+                }
+                .keyboardShortcut("f", modifiers: [.command])
+            }
+        }
+        Settings {
+            SettingsView()
+                .environmentObject(preferences)
+        }
     }
 }
