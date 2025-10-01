@@ -58,12 +58,10 @@ struct ContentView: View {
                     if searchText.isEmpty {
                         if !favoriteApps.isEmpty {
                             AppGridSection(title: "Favorites",
-                                            subtitle: "Apps you launch most",
                                             apps: favoriteApps)
                         }
                         if !recentApps.isEmpty {
                             AppGridSection(title: "Recently Launched",
-                                            subtitle: "Last opened ordered by recency",
                                             apps: recentApps) {
                                 Button("Clear") {
                                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -88,8 +86,11 @@ struct ContentView: View {
                             .padding(.top, 32)
                         } else {
                             AppGridSection(title: "Search",
-                                            subtitle: searchSubtitle(for: searchResults.count),
-                                            apps: searchResults)
+                                            apps: searchResults) {
+                                Text(searchSubtitle(for: searchResults.count))
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }

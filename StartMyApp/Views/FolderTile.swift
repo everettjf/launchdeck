@@ -5,6 +5,7 @@ struct FolderTile: View {
     let itemID: String
     let folder: AppCollectionItem.Folder
     var isDropTarget: Bool = false
+    var isReorderTarget: Bool = false
     var onSizeChange: ((CGSize) -> Void)? = nil
 
     @EnvironmentObject private var appState: AppState
@@ -18,11 +19,13 @@ struct FolderTile: View {
     init(itemID: String,
          folder: AppCollectionItem.Folder,
          isDropTarget: Bool = false,
+         isReorderTarget: Bool = false,
          onSizeChange: ((CGSize) -> Void)? = nil) {
         self.itemID = itemID
         self.folder = folder
         self._draftName = State(initialValue: folder.name)
         self.isDropTarget = isDropTarget
+        self.isReorderTarget = isReorderTarget
         self.onSizeChange = onSizeChange
     }
 
@@ -70,10 +73,11 @@ struct FolderTile: View {
                 .frame(width: tileWidth)
                 .background(tileBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: shadowColor, radius: isHovering ? 10 : 3, x: 0, y: isHovering ? 8 : 3)
+                .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowOffset)
             }
             .buttonStyle(.plain)
             .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isHovering)
+            .scaleEffect(scaleFactor)
         }
         .onHover { hovering in
             isHovering = hovering
@@ -119,15 +123,62 @@ struct FolderTile: View {
 
     private var tileBackground: some View {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(Color.white.opacity(isHovering ? 0.18 : 0.1))
+            .fill(backgroundFill)
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(isDropTarget ? Color.accentColor : Color.white.opacity(isHovering ? 0.35 : 0.12), lineWidth: isDropTarget ? 2 : 1)
+                    .strokeBorder(borderColor, lineWidth: borderWidth)
             )
     }
 
     private var shadowColor: Color {
-        Color.black.opacity(isHovering ? 0.18 : 0.08)
+        if isDropTarget {
+            return Color.accentColor.opacity(0.28)
+        }
+        if isReorderTarget {
+            return Color.accentColor.opacity(0.24)
+        }
+        return Color.black.opacity(isHovering ? 0.18 : 0.08)
+    }
+
+    private var shadowRadius: CGFloat {
+        if isDropTarget { return 18 }
+        if isReorderTarget { return 14 }
+        return isHovering ? 10 : 3
+    }
+
+    private var shadowOffset: CGFloat {
+        if isDropTarget { return 12 }
+        if isReorderTarget { return 10 }
+        return isHovering ? 8 : 3
+    }
+
+    private var borderColor: Color {
+        if isDropTarget { return Color.accentColor }
+        if isReorderTarget { return Color.accentColor.opacity(0.75) }
+        return Color.white.opacity(isHovering ? 0.35 : 0.12)
+    }
+
+    private var borderWidth: CGFloat {
+        if isDropTarget { return 2.4 }
+        if isReorderTarget { return 2 }
+        return 1
+    }
+
+    private var backgroundFill: Color {
+        if isDropTarget {
+            return Color.accentColor.opacity(0.22)
+        }
+        if isReorderTarget {
+            return Color.accentColor.opacity(0.18)
+        }
+        return Color.white.opacity(isHovering ? 0.18 : 0.1)
+    }
+
+    private var scaleFactor: CGFloat {
+        if isDropTarget { return 1.06 }
+        if isReorderTarget { return 1.04 }
+        if isHovering { return 1.02 }
+        return 1.0
     }
 }
 
@@ -292,9 +343,6 @@ private struct FolderAppRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.name)
                     .font(.system(size: 14, weight: .semibold))
-                Text(app.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             Spacer()
             Button {

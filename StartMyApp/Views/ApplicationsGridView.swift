@@ -10,6 +10,7 @@ struct ApplicationsGridView: View {
     @State private var folderCreationTargetID: String?
     @State private var folderAppendTargetID: String?
     @State private var itemSizes: [String: CGSize] = [:]
+    @State private var reorderTargetID: String?
 
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: preferences.gridScale.minimumTileWidth,
@@ -35,6 +36,7 @@ struct ApplicationsGridView: View {
                                                                              draggingItemID: $draggingItemID,
                                                                              folderCreationTargetID: $folderCreationTargetID,
                                                                              folderAppendTargetID: $folderAppendTargetID,
+                                                                             reorderTargetID: $reorderTargetID,
                                                                              appState: appState))
             }
         }
@@ -43,6 +45,7 @@ struct ApplicationsGridView: View {
                                                                 draggingItemID: $draggingItemID,
                                                                 folderCreationTargetID: $folderCreationTargetID,
                                                                 folderAppendTargetID: $folderAppendTargetID,
+                                                                reorderTargetID: $reorderTargetID,
                                                                 appState: appState))
     }
 
@@ -53,6 +56,7 @@ struct ApplicationsGridView: View {
             if let identifier = item.appIdentifier, let app = appState.app(for: identifier) {
                 AppTile(app: app,
                         isDropTarget: folderCreationTargetID == item.id,
+                        isReorderTarget: reorderTargetID == item.id,
                         onSizeChange: { size in itemSizes[item.id] = size })
             }
         case .folder:
@@ -60,6 +64,7 @@ struct ApplicationsGridView: View {
                 FolderTile(itemID: item.id,
                            folder: folder,
                            isDropTarget: folderAppendTargetID == item.id,
+                           isReorderTarget: reorderTargetID == item.id,
                            onSizeChange: { size in itemSizes[item.id] = size })
             }
         }
@@ -72,6 +77,7 @@ private struct ApplicationsDropDelegate: DropDelegate {
     @Binding var draggingItemID: String?
     @Binding var folderCreationTargetID: String?
     @Binding var folderAppendTargetID: String?
+    @Binding var reorderTargetID: String?
     let appState: AppState
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -82,15 +88,22 @@ private struct ApplicationsDropDelegate: DropDelegate {
         guard let draggingID = draggingItemID else { return }
         guard let item else {
             appState.moveItem(draggingID, before: nil)
+            reorderTargetID = nil
             return
         }
         guard item.id != draggingID else { return }
         appState.moveItem(draggingID, before: item.id)
+        reorderTargetID = item.id
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         folderCreationTargetID = nil
         folderAppendTargetID = nil
+        if let item {
+            reorderTargetID = item.id
+        } else {
+            reorderTargetID = nil
+        }
         guard let item else {
             return DropProposal(operation: .move)
         }
@@ -118,6 +131,9 @@ private struct ApplicationsDropDelegate: DropDelegate {
         if folderAppendTargetID == item?.id {
             folderAppendTargetID = nil
         }
+        if reorderTargetID == item?.id {
+            reorderTargetID = nil
+        }
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -125,6 +141,7 @@ private struct ApplicationsDropDelegate: DropDelegate {
             draggingItemID = nil
             folderCreationTargetID = nil
             folderAppendTargetID = nil
+            reorderTargetID = nil
         }
         guard let draggingID = draggingItemID else { return false }
 

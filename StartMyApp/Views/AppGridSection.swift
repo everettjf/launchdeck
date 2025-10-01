@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AppGridSection<HeaderTrailing: View>: View {
     let title: String
-    let subtitle: String?
     let apps: [DiscoveredApp]
     let emptyState: String?
     @ViewBuilder var trailing: () -> HeaderTrailing
@@ -10,12 +9,10 @@ struct AppGridSection<HeaderTrailing: View>: View {
     @EnvironmentObject private var preferences: AppPreferences
 
     init(title: String,
-         subtitle: String? = nil,
          apps: [DiscoveredApp],
          emptyState: String? = nil,
          @ViewBuilder trailing: @escaping () -> HeaderTrailing = { EmptyView() }) {
         self.title = title
-        self.subtitle = subtitle
         self.apps = apps
         self.emptyState = emptyState
         self.trailing = trailing
@@ -26,11 +23,6 @@ struct AppGridSection<HeaderTrailing: View>: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(title)
                     .font(.title3.weight(.semibold))
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
                 Spacer()
                 trailing()
             }
