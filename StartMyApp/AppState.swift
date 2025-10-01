@@ -197,6 +197,21 @@ final class AppState: ObservableObject {
         focusPublisher.send()
     }
 
+    func exportAppCatalog() {
+        let panel = NSSavePanel()
+        panel.allowedFileTypes = ["json"]
+        panel.isExtensionHidden = false
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = defaultExportFileName()
+
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor [weak self] in
+                await self?.writeCatalog(to: url)
+            }
+        }
+    }
+
     func appsMatchingSearch() -> [DiscoveredApp] {
         guard !searchQuery.isEmpty else { return allApps() }
         let term = searchQuery.lowercased()
@@ -381,6 +396,59 @@ final class AppState: ObservableObject {
         layoutStore.save(updated)
     }
 
+    private func writeCatalog(to url: URL) async {
+        let exportApps = apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let recentsLookup = Dictionary(uniqueKeysWithValues: recents.map { ($0.identifier, $0) })
+
+        let payload = exportApps.map { app -> ExportedApp in
+            let recent = recentsLookup[app.identifier]
+            return ExportedApp(name: app.name,
+                               bundleIdentifier: app.bundleIdentifier,
+                               path: app.path,
+                               category: app.category,
+                               version: app.bundleVersion,
+                               developer: app.developer,
+                               isSystemApp: app.isSystemApp,
+                               keywords: app.keywords.sorted(),
+                               lastLaunch: recent?.lastLaunch,
+                               launchCount: recent?.launchCount ?? 0)
+        }
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            if #available(macOS 13.0, *) {
+                encoder.dateEncodingStrategy = .iso8601
+            } else {
+                let formatter = ISO8601DateFormatter()
+                encoder.dateEncodingStrategy = .custom { date, encoder in
+                    let string = formatter.string(from: date)
+                    var container = encoder.singleValueContainer()
+                    try container.encode(string)
+                }
+            }
+            let data = try encoder.encode(payload)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            presentExportError(error.localizedDescription)
+        }
+    }
+
+    private func defaultExportFileName() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HHmm"
+        let timestamp = formatter.string(from: Date())
+        return "ApplicationCatalog_\(timestamp).json"
+    }
+
+    private func presentExportError(_ message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Export Failed"
+        alert.informativeText = message
+        alert.runModal()
+    }
+
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {
         let allApps = apps
         let recentsLookup = Dictionary(uniqueKeysWithValues: recents.map { ($0.identifier, $0) })
@@ -436,4 +504,17 @@ private extension Array where Element == String {
         }
         return counts.max { $0.value < $1.value }?.key
     }
+}
+
+private struct ExportedApp: Codable {
+    let name: String
+    let bundleIdentifier: String?
+    let path: String
+    let category: String?
+    let version: String?
+    let developer: String?
+    let isSystemApp: Bool
+    let keywords: [String]
+    let lastLaunch: Date?
+    let launchCount: Int
 }

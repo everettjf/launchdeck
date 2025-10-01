@@ -38,6 +38,12 @@ struct StartMyAppApp: App {
                 }
                 .keyboardShortcut("f", modifiers: [.command])
             }
+            CommandMenu("Catalog") {
+                Button("Export Application Catalog…") {
+                    appState.exportAppCatalog()
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
         }
         Settings {
             SettingsView()

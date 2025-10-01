@@ -205,11 +205,17 @@ private var allApplicationsSection: some View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Menu {
-                    Picker("Sort Order", selection: $preferences.sortOption) {
-                        ForEach(AppPreferences.SortOption.allCases) { option in
-                            Label(option.title, systemImage: option.iconName)
-                                .labelStyle(.titleAndIcon)
-                                .tag(option)
+                    ForEach(AppPreferences.SortOption.allCases) { option in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                preferences.sortOption = option
+                            }
+                        } label: {
+                            if option == preferences.sortOption {
+                                Label(option.title, systemImage: "checkmark")
+                            } else {
+                                Text(option.title)
+                            }
                         }
                     }
                     if preferences.sortOption != .custom {
