@@ -76,7 +76,7 @@ struct AppTile: View {
                 appState.copyPathToClipboard(app)
             }
             Button("App Info") {
-                AppInfoPresenter.present(for: app)
+                appState.presentAppInfo(for: app)
             }
             Divider()
             if appState.recents.contains(where: { $0.identifier == app.identifier }) {

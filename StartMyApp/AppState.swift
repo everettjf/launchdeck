@@ -10,6 +10,7 @@ final class AppState: ObservableObject {
     @Published var searchQuery: String = ""
     @Published private(set) var favorites: Set<String>
     @Published private(set) var recents: [RecentLaunch]
+    @Published var presentedAppInfo: AppInfoData?
 
     var totalAppCount: Int { apps.count }
 
@@ -210,6 +211,39 @@ final class AppState: ObservableObject {
                 await self?.writeCatalog(to: url)
             }
         }
+    }
+
+    func presentAppInfo(for app: DiscoveredApp) {
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let fileURL = URL(fileURLWithPath: app.path)
+            let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+            let info = AppInfoData(app: app,
+                                   bundleSize: attributes.flatMap { attrs in
+                                       guard let size = attrs[.size] as? NSNumber else { return nil }
+                                       let formatter = ByteCountFormatter()
+                                       formatter.allowedUnits = [.useMB, .useGB]
+                                       formatter.countStyle = .file
+                                       return formatter.string(fromByteCount: size.int64Value)
+                                   },
+                                   created: attributes?[.creationDate] as? Date,
+                                   modified: attributes?[.modificationDate] as? Date,
+                                   permissions: permissionsString(for: fileURL.path))
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    self.presentedAppInfo = info
+                }
+            }
+        }
+    }
+
+    func copyDetails(of info: AppInfoData) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(info.formattedDetails, forType: .string)
+    }
+
+    func dismissAppInfo() {
+        presentedAppInfo = nil
     }
 
     func appsMatchingSearch() -> [DiscoveredApp] {
@@ -441,6 +475,15 @@ final class AppState: ObservableObject {
         return "ApplicationCatalog_\(timestamp).json"
     }
 
+    nonisolated private func permissionsString(for path: String) -> String? {
+        var components: [String] = []
+        if FileManager.default.isReadableFile(atPath: path) { components.append("Read") }
+        if FileManager.default.isWritableFile(atPath: path) { components.append("Write") }
+        if FileManager.default.isExecutableFile(atPath: path) { components.append("Execute") }
+        guard !components.isEmpty else { return nil }
+        return components.joined(separator: "/")
+    }
+
     private func presentExportError(_ message: String) {
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -517,4 +560,52 @@ private struct ExportedApp: Codable {
     let keywords: [String]
     let lastLaunch: Date?
     let launchCount: Int
+}
+
+struct AppInfoData: Identifiable {
+    let app: DiscoveredApp
+    let bundleSize: String?
+    let created: Date?
+    let modified: Date?
+    let permissions: String?
+
+    var id: String { app.identifier }
+
+    var formattedDetails: String {
+        var lines: [String] = []
+        lines.append("Name: \(app.name)")
+        if let bundleIdentifier = app.bundleIdentifier {
+            lines.append("Bundle Identifier: \(bundleIdentifier)")
+        }
+        if let version = app.bundleVersion {
+            lines.append("Version: \(version)")
+        }
+        if let developer = app.developer {
+            lines.append("Developer: \(developer)")
+        }
+        if let category = app.category {
+            lines.append("Category: \(category)")
+        }
+        lines.append("System Application: \(app.isSystemApp ? "Yes" : "No")")
+        lines.append("Path: \(app.path)")
+        if let bundleSize {
+            lines.append("Bundle Size: \(bundleSize)")
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        if let created {
+            lines.append("Created: \(formatter.string(from: created))")
+        }
+        if let modified {
+            lines.append("Last Modified: \(formatter.string(from: modified))")
+        }
+        if let permissions {
+            lines.append("Permissions: \(permissions)")
+        }
+        if !app.keywords.isEmpty {
+            lines.append("Keywords: \(app.keywords.sorted().joined(separator: ", "))")
+        }
+        return lines.joined(separator: "\n")
+    }
 }

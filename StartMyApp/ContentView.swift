@@ -33,6 +33,10 @@ struct ContentView: View {
             VisualEffectBackground()
             mainContent
         }
+        .sheet(item: $appState.presentedAppInfo, onDismiss: appState.dismissAppInfo) { info in
+            AppInfoView(info: info)
+                .environmentObject(appState)
+        }
         .onAppear(perform: configure)
         .onDisappear { focusCancellable?.cancel() }
         .onChange(of: searchText) { newValue in
