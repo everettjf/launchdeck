@@ -17,42 +17,42 @@ final class AppPreferences: ObservableObject {
 
         var iconSize: CGFloat {
             switch self {
-            case .compact: return 52
-            case .comfortable: return 68
-            case .spacious: return 88
+            case .compact: return 48
+            case .comfortable: return 60
+            case .spacious: return 76
             }
         }
 
         var labelFontSize: CGFloat {
             switch self {
             case .compact: return 11
-            case .comfortable: return 13
-            case .spacious: return 15
+            case .comfortable: return 12.5
+            case .spacious: return 14.5
             }
         }
 
         var horizontalSpacing: CGFloat {
             switch self {
-            case .compact: return 14
-            case .comfortable: return 18
-            case .spacious: return 24
+            case .compact: return 12
+            case .comfortable: return 16
+            case .spacious: return 20
             }
         }
 
         var verticalSpacing: CGFloat {
             switch self {
-            case .compact: return 18
-            case .comfortable: return 24
-            case .spacious: return 30
+            case .compact: return 16
+            case .comfortable: return 22
+            case .spacious: return 28
             }
         }
 
         var minimumTileWidth: CGFloat {
-            iconSize + 48
+            iconSize + 28
         }
 
         var maximumTileWidth: CGFloat {
-            iconSize + 140
+            iconSize + 110
         }
     }
 

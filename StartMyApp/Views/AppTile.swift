@@ -10,8 +10,11 @@ struct AppTile: View {
     @State private var icon: NSImage?
     @State private var isHovering = false
 
+    var isDropTarget: Bool = false
+    var onSizeChange: ((CGSize) -> Void)? = nil
+
     private var tileWidth: CGFloat {
-        preferences.gridScale.minimumTileWidth + 24
+        preferences.gridScale.minimumTileWidth + 8
     }
 
     var body: some View {
@@ -33,9 +36,8 @@ struct AppTile: View {
                 .padding(16)
                 .frame(width: tileWidth)
                 .background(tileBackground)
-                .overlay(tileBorder)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .shadow(color: shadowColor, radius: isHovering ? 12 : 4, x: 0, y: isHovering ? 10 : 4)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: shadowColor, radius: isHovering ? 10 : 3, x: 0, y: isHovering ? 8 : 3)
             }
             .buttonStyle(.plain)
             .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isHovering)
@@ -56,6 +58,9 @@ struct AppTile: View {
         .onChange(of: preferences.gridScale) { _ in
             loadIcon()
         }
+        .background(SizeReader(onChange: { size in
+            onSizeChange?(size)
+        }))
         .contextMenu {
             Button(appState.isFavorite(app) ? "Remove from Favorites" : "Add to Favorites") {
                 appState.toggleFavorite(for: app)
@@ -79,26 +84,37 @@ struct AppTile: View {
     }
 
     private var tileBackground: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(.ultraThinMaterial)
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(Color.white.opacity(isHovering ? 0.18 : 0.1))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(isHovering ? 0.16 : 0.08))
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(isDropTarget ? Color.accentColor : Color.white.opacity(isHovering ? 0.35 : 0.12), lineWidth: isDropTarget ? 2 : 1)
             )
     }
 
-    private var tileBorder: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .strokeBorder(Color.white.opacity(isHovering ? 0.35 : 0.15), lineWidth: isHovering ? 1.4 : 1)
-    }
-
     private var shadowColor: Color {
-        Color.black.opacity(isHovering ? 0.22 : 0.12)
+        Color.black.opacity(isHovering ? 0.18 : 0.08)
     }
 
     private func loadIcon() {
         AppIconCache.shared.icon(for: app.path, size: preferences.gridScale.iconSize) { image in
             icon = image
+        }
+    }
+}
+
+private struct SizeReader: View {
+    var onChange: (CGSize) -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            Color.clear
+                .onAppear {
+                    onChange(geometry.size)
+                }
+                .onChange(of: geometry.size) { newValue in
+                    onChange(newValue)
+                }
         }
     }
 }

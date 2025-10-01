@@ -9,6 +9,8 @@ struct ContentView: View {
     @State private var searchText: String = ""
     @State private var focusCancellable: AnyCancellable?
     @State private var didAppear = false
+    @State private var isCreatingFolder = false
+    @State private var newFolderName: String = ""
 
     private var searchResults: [DiscoveredApp] {
         appState.appsMatchingSearch()
@@ -73,10 +75,7 @@ struct ContentView: View {
                                 .help("Clear recently launched apps")
                             }
                         }
-                        AppGridSection(title: "All Applications",
-                                        subtitle: "Every installed app we could find",
-                                        apps: allApps,
-                                        emptyState: "No applications were found on this Mac.")
+                        allApplicationsSection
                     } else {
                         if searchResults.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
@@ -103,6 +102,13 @@ struct ContentView: View {
             withAnimation(.easeOut(duration: 0.4)) {
                 didAppear = true
             }
+        }
+        .sheet(isPresented: $isCreatingFolder) {
+            NewFolderSheet(isPresented: $isCreatingFolder,
+                           folderName: $newFolderName,
+                           onCreate: { name in
+                               appState.createEmptyFolder(named: name)
+                           })
         }
     }
 
@@ -179,13 +185,96 @@ struct ContentView: View {
         appState.launch(app)
     }
 
-    private func configure() {
-        searchText = appState.searchQuery
-        focusCancellable = appState.searchFocusPublisher
-            .receive(on: RunLoop.main)
-            .sink { _ in
-                isSearchFieldFocused = true
+private func configure() {
+    searchText = appState.searchQuery
+    focusCancellable = appState.searchFocusPublisher
+        .receive(on: RunLoop.main)
+        .sink { _ in
+            isSearchFieldFocused = true
+        }
+}
+
+private var allApplicationsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Text("All Applications")
+                    .font(.title3.weight(.semibold))
+                Text("\(appState.totalAppCount)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    newFolderName = ""
+                    isCreatingFolder = true
+                } label: {
+                    Label("New Folder", systemImage: "folder.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                .help("Create a custom folder to organize your apps")
             }
+
+            if appState.orderedCollections().isEmpty {
+                Text("No applications were found on this Mac.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 16)
+            } else {
+                ApplicationsGridView()
+            }
+        }
+    }
+}
+
+private struct NewFolderSheet: View {
+    @Binding var isPresented: Bool
+    @Binding var folderName: String
+    var onCreate: (String) -> Void
+
+    @FocusState private var isTextFieldFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("New Folder")
+                .font(.title2.weight(.semibold))
+
+            TextField("Folder Name", text: $folderName)
+                .textFieldStyle(.roundedBorder)
+                .focused($isTextFieldFocused)
+                .onSubmit(commit)
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isPresented = false
+                }
+                Button("Create") {
+                    commit()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 320)
+        .onAppear {
+            if folderName.isEmpty {
+                folderName = defaultFolderName
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isTextFieldFocused = true
+            }
+        }
+    }
+
+    private func commit() {
+        let trimmed = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        onCreate(trimmed)
+        folderName = ""
+        isPresented = false
+    }
+
+    private var defaultFolderName: String {
+        "新建文件夹"
     }
 }
 

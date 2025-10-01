@@ -6,32 +6,40 @@ import SwiftUI
 @MainActor
 final class AppState: ObservableObject {
     @Published private(set) var apps: [DiscoveredApp] = []
+    @Published private(set) var layout: [AppCollectionItem]
     @Published var searchQuery: String = ""
     @Published private(set) var favorites: Set<String>
     @Published private(set) var recents: [RecentLaunch]
 
+    var totalAppCount: Int { apps.count }
+
     private let favoritesStore: FavoritesStore
     private let recentsStore: RecentsStore
     private let discoveryService: ApplicationDiscoveryService
+    private let layoutStore: LayoutStore
     private let preferences: AppPreferences
     private let focusPublisher = PassthroughSubject<Void, Never>()
+
+    private var appsByIdentifier: [String: DiscoveredApp] = [:]
+    private var cancellables = Set<AnyCancellable>()
 
     var searchFocusPublisher: AnyPublisher<Void, Never> {
         focusPublisher.eraseToAnyPublisher()
     }
 
-    private var cancellables = Set<AnyCancellable>()
-
     init(preferences: AppPreferences,
          favoritesStore: FavoritesStore = FavoritesStore(),
          recentsStore: RecentsStore = RecentsStore(maxCount: 12),
-         discoveryService: ApplicationDiscoveryService = ApplicationDiscoveryService()) {
+         discoveryService: ApplicationDiscoveryService = ApplicationDiscoveryService(),
+         layoutStore: LayoutStore = LayoutStore()) {
         self.preferences = preferences
         self.favoritesStore = favoritesStore
         self.recentsStore = recentsStore
         self.discoveryService = discoveryService
+        self.layoutStore = layoutStore
         self.favorites = favoritesStore.load()
         self.recents = recentsStore.load()
+        self.layout = layoutStore.load()
 
         setupBindings()
         refreshApps()
@@ -50,14 +58,56 @@ final class AppState: ObservableObject {
         let includeSystemApps = preferences.showSystemApps
         let discoveryService = discoveryService
         Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
             let discovered = discoveryService.discoverApplications(includeSystemApps: includeSystemApps)
             await MainActor.run {
-                guard let self else { return }
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    self.apps = discovered
+                self.handleDiscoveredApps(discovered)
+            }
+        }
+    }
+
+    private func handleDiscoveredApps(_ discovered: [DiscoveredApp]) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            apps = discovered
+        }
+        appsByIdentifier = Dictionary(uniqueKeysWithValues: discovered.map { ($0.identifier, $0) })
+        syncLayoutWithDiscoveredApps()
+    }
+
+    private func syncLayoutWithDiscoveredApps() {
+        let knownIdentifiers = Set(appsByIdentifier.keys)
+        var updatedLayout: [AppCollectionItem] = []
+
+        for item in layout {
+            switch item.kind {
+            case .app:
+                guard let identifier = item.appIdentifier, knownIdentifiers.contains(identifier) else { continue }
+                updatedLayout.append(.app(identifier))
+            case .folder:
+                guard var folder = item.folder else { continue }
+                folder.appIdentifiers = folder.appIdentifiers.filter { knownIdentifiers.contains($0) }
+                if folder.appIdentifiers.count >= 2 {
+                    var folderItem = item
+                    folderItem.folder = folder
+                    updatedLayout.append(folderItem)
+                } else if let singleIdentifier = folder.appIdentifiers.first {
+                    updatedLayout.append(.app(singleIdentifier))
                 }
             }
         }
+
+        let existingIdentifiers = Set(updatedLayout.flatMap { $0.containedAppIdentifiers })
+        let missingIdentifiers = knownIdentifiers.subtracting(existingIdentifiers)
+        let sortedMissing = missingIdentifiers
+            .compactMap { appsByIdentifier[$0] }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        for app in sortedMissing {
+            updatedLayout.append(.app(app.identifier))
+        }
+
+        layout = updatedLayout
+        layoutStore.save(updatedLayout)
     }
 
     func toggleFavorite(for app: DiscoveredApp) {
@@ -148,51 +198,191 @@ final class AppState: ObservableObject {
     }
 
     func appsMatchingSearch() -> [DiscoveredApp] {
-        guard !searchQuery.isEmpty else { return visibleAppsSorted() }
+        guard !searchQuery.isEmpty else { return allApps() }
         let term = searchQuery.lowercased()
-        return visibleAppsSorted().filter { app in
-            app.searchableText.contains(term)
-        }
+        let matches = apps.filter { $0.searchableText.contains(term) }
+        return matches.sorted { searchRank(for: $0) > searchRank(for: $1) }
     }
 
     func favoriteApps() -> [DiscoveredApp] {
-        visibleAppsSorted().filter { favorites.contains($0.identifier) }
+        orderedIdentifiers().compactMap { identifier in
+            guard favorites.contains(identifier) else { return nil }
+            return appsByIdentifier[identifier]
+        }
     }
 
     func recentApps() -> [DiscoveredApp] {
-        let lookup = Dictionary(uniqueKeysWithValues: visibleAppsSorted().map { ($0.identifier, $0) })
-        return recents.compactMap { launch in
-            guard let app = lookup[launch.identifier] else { return nil }
-            return app
+        recents.compactMap { launch in
+            appsByIdentifier[launch.identifier]
         }
     }
 
     func allApps() -> [DiscoveredApp] {
-        visibleAppsSorted()
+        orderedIdentifiers().compactMap { appsByIdentifier[$0] }
     }
 
-    private func visibleAppsSorted() -> [DiscoveredApp] {
-        apps.sorted { first, second in
-            let firstWeight = sortWeight(for: first)
-            let secondWeight = sortWeight(for: second)
-            if firstWeight == secondWeight {
-                return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
-            }
-            return firstWeight > secondWeight
+    func orderedCollections() -> [AppCollectionItem] {
+        layout
+    }
+
+    func app(for identifier: String) -> DiscoveredApp? {
+        appsByIdentifier[identifier]
+    }
+
+    func collection(withID id: String) -> AppCollectionItem? {
+        layout.first { $0.id == id }
+    }
+
+    func createEmptyFolder(named name: String) {
+        modifyLayout { layout in
+            let folder = AppCollectionItem.folder(name: name, appIdentifiers: [])
+            layout.append(folder)
         }
     }
 
-    private func sortWeight(for app: DiscoveredApp) -> Int {
+    func renameFolder(id: String, to newName: String) {
+        guard !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        modifyLayout { layout in
+            guard let index = layout.firstIndex(where: { $0.id == id }),
+                  layout[index].kind == .folder else { return }
+            layout[index].folder?.name = newName
+        }
+    }
+
+    func moveItem(_ draggedID: String, before targetID: String?) {
+        guard draggedID != targetID else { return }
+        modifyLayout { layout in
+            guard let fromIndex = layout.firstIndex(where: { $0.id == draggedID }) else { return }
+            let item = layout.remove(at: fromIndex)
+            if let targetID, let targetIndex = layout.firstIndex(where: { $0.id == targetID }) {
+                layout.insert(item, at: targetIndex)
+            } else {
+                layout.append(item)
+            }
+        }
+    }
+
+    func addApp(_ appID: String, toFolder folderID: String) {
+        modifyLayout { layout in
+            guard layout.contains(where: { $0.id == folderID }) else { return }
+            if let appIndex = layout.firstIndex(where: { $0.id == appID }) {
+                layout.remove(at: appIndex)
+            }
+            guard let folderIndex = layout.firstIndex(where: { $0.id == folderID }),
+                  var folder = layout[folderIndex].folder else { return }
+            guard !folder.appIdentifiers.contains(appID) else { return }
+            folder.appIdentifiers.append(appID)
+            layout[folderIndex].folder = folder
+        }
+    }
+
+    func createFolder(byCombining firstID: String, and secondID: String) {
+        guard firstID != secondID else { return }
+        modifyLayout { layout in
+            guard let firstIndex = layout.firstIndex(where: { $0.id == firstID }),
+                  let secondIndex = layout.firstIndex(where: { $0.id == secondID }) else { return }
+            let firstItem = layout[firstIndex]
+            let secondItem = layout[secondIndex]
+            guard let firstApp = firstItem.appIdentifier,
+                  let secondApp = secondItem.appIdentifier else { return }
+
+            let lowerIndex = min(firstIndex, secondIndex)
+            let higherIndex = max(firstIndex, secondIndex)
+            layout.remove(at: higherIndex)
+            layout.remove(at: lowerIndex)
+
+            let folderName = defaultFolderName(suggesting: [firstApp, secondApp])
+            let folder = AppCollectionItem.folder(name: folderName, appIdentifiers: [firstApp, secondApp])
+            layout.insert(folder, at: lowerIndex)
+        }
+    }
+
+    func removeApp(_ appID: String, fromFolder folderID: String) {
+        modifyLayout { layout in
+            guard let index = layout.firstIndex(where: { $0.id == folderID }),
+                  var folder = layout[index].folder else { return }
+            folder.appIdentifiers.removeAll { $0 == appID }
+            if folder.appIdentifiers.count >= 2 {
+                layout[index].folder = folder
+            } else if let single = folder.appIdentifiers.first {
+                layout[index] = .app(single)
+            } else {
+                layout.remove(at: index)
+            }
+        }
+    }
+
+    func deleteFolder(_ folderID: String) {
+        modifyLayout { layout in
+            guard let index = layout.firstIndex(where: { $0.id == folderID }),
+                  let folder = layout[index].folder else { return }
+            layout.remove(at: index)
+            let insertIndex = min(index, layout.count)
+            for (offset, identifier) in folder.appIdentifiers.enumerated() {
+                layout.insert(.app(identifier), at: insertIndex + offset)
+            }
+        }
+    }
+
+    func dissolveFolderIfNeeded(_ folderID: String) {
+        modifyLayout { layout in
+            guard let index = layout.firstIndex(where: { $0.id == folderID }),
+                  var folder = layout[index].folder else { return }
+            folder.appIdentifiers = folder.appIdentifiers.filter { appsByIdentifier[$0] != nil }
+            if folder.appIdentifiers.count >= 2 {
+                layout[index].folder = folder
+            } else if let single = folder.appIdentifiers.first {
+                layout[index] = .app(single)
+            } else {
+                layout.remove(at: index)
+            }
+        }
+    }
+
+    private func orderedIdentifiers() -> [String] {
+        layout.flatMap { $0.containedAppIdentifiers }
+    }
+
+    private func searchRank(for app: DiscoveredApp) -> Int {
         var weight = 0
         if favorites.contains(app.identifier) {
+            weight += 20
+        }
+        if let firstRecent = recents.first, firstRecent.identifier == app.identifier {
             weight += 10
         }
-        if recents.first?.identifier == app.identifier {
-            weight += 5
+        if let layoutIndex = layout.firstIndex(where: { $0.containedAppIdentifiers.contains(app.identifier) }) {
+            weight += max(0, 15 - layoutIndex)
         }
-        if app.isSystemApp {
-            weight -= 1
+        if !app.isSystemApp {
+            weight += 1
         }
         return weight
+    }
+
+    private func defaultFolderName(suggesting identifiers: [String]) -> String {
+        let categories = identifiers.compactMap { appsByIdentifier[$0]?.category }
+        if let common = categories.mostCommonElement() {
+            return common
+        }
+        return NSLocalizedString("新建文件夹", comment: "Default folder name")
+    }
+
+    private func modifyLayout(_ modify: (inout [AppCollectionItem]) -> Void) {
+        var updated = layout
+        modify(&updated)
+        layout = updated
+        layoutStore.save(updated)
+    }
+}
+
+private extension Array where Element == String {
+    func mostCommonElement() -> String? {
+        guard !isEmpty else { return nil }
+        var counts: [String: Int] = [:]
+        for element in self {
+            counts[element, default: 0] += 1
+        }
+        return counts.max { $0.value < $1.value }?.key
     }
 }
