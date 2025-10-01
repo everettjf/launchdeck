@@ -14,6 +14,12 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                Picker("Sort Order", selection: $preferences.sortOption) {
+                    ForEach(AppPreferences.SortOption.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
             }
 
             Section("Appearance") {

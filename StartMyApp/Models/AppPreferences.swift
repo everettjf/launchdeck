@@ -56,8 +56,45 @@ final class AppPreferences: ObservableObject {
         }
     }
 
+    enum SortOption: Int, CaseIterable, Identifiable {
+        case custom
+        case alphabetical
+        case mostLaunched
+        case recentlyLaunched
+
+        var id: Int { rawValue }
+
+        var title: String {
+            switch self {
+            case .custom: return "Custom"
+            case .alphabetical: return "Name"
+            case .mostLaunched: return "Most Launched"
+            case .recentlyLaunched: return "Recently Launched"
+            }
+        }
+
+        var shortLabel: String {
+            switch self {
+            case .custom: return "Sort: Custom"
+            case .alphabetical: return "Sort: Name"
+            case .mostLaunched: return "Sort: Most Launched"
+            case .recentlyLaunched: return "Sort: Recent"
+            }
+        }
+
+        var iconName: String {
+            switch self {
+            case .custom: return "arrow.uturn.backward"
+            case .alphabetical: return "textformat"
+            case .mostLaunched: return "flame"
+            case .recentlyLaunched: return "clock.arrow.circlepath"
+            }
+        }
+    }
+
     @Published var showSystemApps: Bool
     @Published var gridScale: GridScale
+    @Published var sortOption: SortOption
 
     private let defaults: UserDefaults
     fileprivate var cancellables = Set<AnyCancellable>()
@@ -65,6 +102,7 @@ final class AppPreferences: ObservableObject {
     private enum Keys {
         static let showSystemApps = "preferences.showSystemApps"
         static let gridScale = "preferences.gridScale"
+        static let sortOption = "preferences.sortOption"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -77,6 +115,9 @@ final class AppPreferences: ObservableObject {
 
         let storedScale = defaults.integer(forKey: Keys.gridScale)
         gridScale = GridScale(rawValue: storedScale) ?? .comfortable
+
+        let storedSort = defaults.integer(forKey: Keys.sortOption)
+        sortOption = SortOption(rawValue: storedSort) ?? .custom
 
         bind()
     }
@@ -93,6 +134,13 @@ final class AppPreferences: ObservableObject {
             .dropFirst()
             .sink { [weak self] value in
                 self?.defaults.set(value.rawValue, forKey: Keys.gridScale)
+            }
+            .store(in: &cancellables)
+
+        $sortOption
+            .dropFirst()
+            .sink { [weak self] value in
+                self?.defaults.set(value.rawValue, forKey: Keys.sortOption)
             }
             .store(in: &cancellables)
     }

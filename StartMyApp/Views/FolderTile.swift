@@ -343,6 +343,7 @@ private struct FolderAppRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.name)
                     .font(.system(size: 14, weight: .semibold))
+                    .help(app.name)
             }
             Spacer()
             Button {

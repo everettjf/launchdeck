@@ -31,6 +31,7 @@ struct AppTile: View {
                         .padding(.horizontal, 4)
                         .frame(maxWidth: .infinity)
                         .frame(height: titleHeight, alignment: .top)
+                        .help(app.name)
                 }
                 .padding(.vertical, 14)
                 .padding(.horizontal, 12)
@@ -74,6 +75,10 @@ struct AppTile: View {
             Button("Copy Path") {
                 appState.copyPathToClipboard(app)
             }
+            Button("App Info") {
+                AppInfoPresenter.present(for: app)
+            }
+            Divider()
             if appState.recents.contains(where: { $0.identifier == app.identifier }) {
                 Button("Remove from Recents") {
                     appState.removeFromRecents(app)

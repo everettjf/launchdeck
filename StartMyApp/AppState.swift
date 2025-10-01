@@ -222,7 +222,13 @@ final class AppState: ObservableObject {
     }
 
     func orderedCollections() -> [AppCollectionItem] {
-        layout
+        switch preferences.sortOption {
+        case .custom:
+            return layout
+        case .alphabetical, .mostLaunched, .recentlyLaunched:
+            let identifiers = sortedAppIdentifiers(for: preferences.sortOption)
+            return identifiers.map { AppCollectionItem.app($0) }
+        }
     }
 
     func app(for identifier: String) -> DiscoveredApp? {
@@ -365,7 +371,7 @@ final class AppState: ObservableObject {
         if let common = categories.mostCommonElement() {
             return common
         }
-        return NSLocalizedString("新建文件夹", comment: "Default folder name")
+        return NSLocalizedString("New Folder", comment: "Default folder name")
     }
 
     private func modifyLayout(_ modify: (inout [AppCollectionItem]) -> Void) {
@@ -373,6 +379,51 @@ final class AppState: ObservableObject {
         modify(&updated)
         layout = updated
         layoutStore.save(updated)
+    }
+
+    private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {
+        let allApps = apps
+        let recentsLookup = Dictionary(uniqueKeysWithValues: recents.map { ($0.identifier, $0) })
+
+        switch option {
+        case .custom:
+            return orderedIdentifiers()
+        case .alphabetical:
+            return allApps
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .map { $0.identifier }
+        case .mostLaunched:
+            return allApps
+                .sorted { first, second in
+                    let firstCount = recentsLookup[first.identifier]?.launchCount ?? 0
+                    let secondCount = recentsLookup[second.identifier]?.launchCount ?? 0
+                    if firstCount == secondCount {
+                        return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
+                    }
+                    return firstCount > secondCount
+                }
+                .map { $0.identifier }
+        case .recentlyLaunched:
+            return allApps
+                .sorted { first, second in
+                    let firstDate = recentsLookup[first.identifier]?.lastLaunch
+                    let secondDate = recentsLookup[second.identifier]?.lastLaunch
+                    switch (firstDate, secondDate) {
+                    case let (lhs?, rhs?):
+                        if lhs == rhs {
+                            return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
+                        }
+                        return lhs > rhs
+                    case (_?, nil):
+                        return true
+                    case (nil, _?):
+                        return false
+                    case (nil, nil):
+                        return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
+                    }
+                }
+                .map { $0.identifier }
+        }
     }
 }
 

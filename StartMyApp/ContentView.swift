@@ -204,7 +204,33 @@ private var allApplicationsSection: some View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Menu {
+                    Picker("Sort Order", selection: $preferences.sortOption) {
+                        ForEach(AppPreferences.SortOption.allCases) { option in
+                            Label(option.title, systemImage: option.iconName)
+                                .labelStyle(.titleAndIcon)
+                                .tag(option)
+                        }
+                    }
+                    if preferences.sortOption != .custom {
+                        Divider()
+                        Button("Restore Default Order") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                preferences.sortOption = .custom
+                            }
+                        }
+                    }
+                } label: {
+                    Label(preferences.sortOption.shortLabel, systemImage: "arrow.up.arrow.down")
+                }
+                .help("Adjust the application sort order")
+
                 Button {
+                    if preferences.sortOption != .custom {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            preferences.sortOption = .custom
+                        }
+                    }
                     newFolderName = ""
                     isCreatingFolder = true
                 } label: {
@@ -275,7 +301,7 @@ private struct NewFolderSheet: View {
     }
 
     private var defaultFolderName: String {
-        "新建文件夹"
+        "New Folder"
     }
 }
 

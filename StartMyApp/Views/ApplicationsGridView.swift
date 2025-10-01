@@ -20,53 +20,74 @@ struct ApplicationsGridView: View {
     }
 
     var body: some View {
+        let supportsDrag = preferences.sortOption == .custom
+
         LazyVGrid(columns: columns,
                   alignment: .leading,
                   spacing: preferences.gridScale.verticalSpacing) {
             ForEach(appState.orderedCollections(), id: \.id) { item in
-                content(for: item)
-                    .onDrag {
-                        draggingItemID = item.id
-                        folderCreationTargetID = nil
-                        folderAppendTargetID = nil
-                        return NSItemProvider(object: item.id as NSString)
-                    }
-                    .onDrop(of: [.text], delegate: ApplicationsDropDelegate(item: item,
-                                                                             tileSize: itemSizes[item.id] ?? .init(width: preferences.gridScale.minimumTileWidth + 8, height: preferences.gridScale.minimumTileWidth + 32),
-                                                                             draggingItemID: $draggingItemID,
-                                                                             folderCreationTargetID: $folderCreationTargetID,
-                                                                             folderAppendTargetID: $folderAppendTargetID,
-                                                                             reorderTargetID: $reorderTargetID,
-                                                                             appState: appState))
+                tile(for: item, supportsDrag: supportsDrag)
             }
         }
-        .onDrop(of: [.text], delegate: ApplicationsDropDelegate(item: nil,
-                                                                tileSize: .zero,
-                                                                draggingItemID: $draggingItemID,
-                                                                folderCreationTargetID: $folderCreationTargetID,
-                                                                folderAppendTargetID: $folderAppendTargetID,
-                                                                reorderTargetID: $reorderTargetID,
-                                                                appState: appState))
+        .if(supportsDrag) { view in
+            view.onDrop(of: [.text], delegate: ApplicationsDropDelegate(item: nil,
+                                                                        tileSize: .zero,
+                                                                        draggingItemID: $draggingItemID,
+                                                                        folderCreationTargetID: $folderCreationTargetID,
+                                                                        folderAppendTargetID: $folderAppendTargetID,
+                                                                        reorderTargetID: $reorderTargetID,
+                                                                        appState: appState))
+        }
+        .onChange(of: supportsDrag) { enabled in
+            if !enabled {
+                draggingItemID = nil
+                folderCreationTargetID = nil
+                folderAppendTargetID = nil
+                reorderTargetID = nil
+            }
+        }
     }
 
     @ViewBuilder
-    private func content(for item: AppCollectionItem) -> some View {
+    private func content(for item: AppCollectionItem, isDragEnabled: Bool) -> some View {
         switch item.kind {
         case .app:
             if let identifier = item.appIdentifier, let app = appState.app(for: identifier) {
                 AppTile(app: app,
-                        isDropTarget: folderCreationTargetID == item.id,
-                        isReorderTarget: reorderTargetID == item.id,
+                        isDropTarget: isDragEnabled ? folderCreationTargetID == item.id : false,
+                        isReorderTarget: isDragEnabled ? reorderTargetID == item.id : false,
                         onSizeChange: { size in itemSizes[item.id] = size })
             }
         case .folder:
             if let folder = item.folder {
                 FolderTile(itemID: item.id,
                            folder: folder,
-                           isDropTarget: folderAppendTargetID == item.id,
-                           isReorderTarget: reorderTargetID == item.id,
+                           isDropTarget: isDragEnabled ? folderAppendTargetID == item.id : false,
+                           isReorderTarget: isDragEnabled ? reorderTargetID == item.id : false,
                            onSizeChange: { size in itemSizes[item.id] = size })
             }
+        }
+    }
+
+    @ViewBuilder
+    private func tile(for item: AppCollectionItem, supportsDrag: Bool) -> some View {
+        if supportsDrag {
+            content(for: item, isDragEnabled: true)
+                .onDrag {
+                    draggingItemID = item.id
+                    folderCreationTargetID = nil
+                    folderAppendTargetID = nil
+                    return NSItemProvider(object: item.id as NSString)
+                }
+                .onDrop(of: [.text], delegate: ApplicationsDropDelegate(item: item,
+                                                                         tileSize: itemSizes[item.id] ?? .init(width: preferences.gridScale.minimumTileWidth + 8, height: preferences.gridScale.minimumTileWidth + 32),
+                                                                         draggingItemID: $draggingItemID,
+                                                                         folderCreationTargetID: $folderCreationTargetID,
+                                                                         folderAppendTargetID: $folderAppendTargetID,
+                                                                         reorderTargetID: $reorderTargetID,
+                                                                         appState: appState))
+        } else {
+            content(for: item, isDragEnabled: false)
         }
     }
 }
@@ -166,5 +187,16 @@ private struct ApplicationsDropDelegate: DropDelegate {
         let distance = sqrt(dx * dx + dy * dy)
         let threshold = min(tileSize.width, tileSize.height) * 0.35
         return distance < threshold
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
     }
 }
