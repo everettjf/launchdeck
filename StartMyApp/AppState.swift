@@ -63,11 +63,12 @@ final class AppState: ObservableObject {
     func refreshApps() {
         let includeSystemApps = preferences.showSystemApps
         let discoveryService = discoveryService
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let discovered = await discoveryService.discoverApplications(includeSystemApps: includeSystemApps)
+        weak var weakSelf = self
+        Task.detached(priority: .userInitiated) {
+            let discovered = discoveryService.discoverApplications(includeSystemApps: includeSystemApps)
             await MainActor.run {
-                guard let self else { return }
-                self.handleDiscoveredApps(discovered)
+                guard let appState = weakSelf else { return }
+                appState.handleDiscoveredApps(discovered)
             }
         }
     }
