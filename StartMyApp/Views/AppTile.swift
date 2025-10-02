@@ -59,7 +59,7 @@ struct AppTile: View {
             isHovering = hovering
         }
         .onAppear(perform: loadIcon)
-        .onChange(of: preferences.gridScale) { _ in
+        .onChange(of: preferences.gridScale) { _, _ in
             loadIcon()
         }
         .background(SizeReader(onChange: { size in
@@ -181,7 +181,7 @@ private struct SizeReader: View {
                 .onAppear {
                     onChange(geometry.size)
                 }
-                .onChange(of: geometry.size) { newValue in
+                .onChange(of: geometry.size) { _, newValue in
                     onChange(newValue)
                 }
         }

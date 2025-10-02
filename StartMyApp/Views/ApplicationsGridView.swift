@@ -38,7 +38,7 @@ struct ApplicationsGridView: View {
                                                                         reorderTargetID: $reorderTargetID,
                                                                         appState: appState))
         }
-        .onChange(of: supportsDrag) { enabled in
+        .onChange(of: supportsDrag) { _, enabled in
             if !enabled {
                 draggingItemID = nil
                 folderCreationTargetID = nil

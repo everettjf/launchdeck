@@ -83,7 +83,7 @@ struct FolderTile: View {
             GeometryReader { geometry in
                 Color.clear
                     .onAppear { onSizeChange?(geometry.size) }
-                    .onChange(of: geometry.size) { newSize in
+                    .onChange(of: geometry.size) { _, newSize in
                         onSizeChange?(newSize)
                     }
             }

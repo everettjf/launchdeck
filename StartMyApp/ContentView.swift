@@ -39,7 +39,7 @@ struct ContentView: View {
         }
         .onAppear(perform: configure)
         .onDisappear { focusCancellable?.cancel() }
-        .onChange(of: searchText) { newValue in
+        .onChange(of: searchText) { _, newValue in
             if appState.searchQuery != newValue {
                 appState.searchQuery = newValue
             }

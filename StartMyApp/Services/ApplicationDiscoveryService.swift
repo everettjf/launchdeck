@@ -128,3 +128,5 @@ final class ApplicationDiscoveryService {
         return Array(keywords)
     }
 }
+
+extension ApplicationDiscoveryService: @unchecked Sendable {}

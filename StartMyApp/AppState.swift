@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppState: ObservableObject {
@@ -16,7 +17,7 @@ final class AppState: ObservableObject {
 
     private let favoritesStore: FavoritesStore
     private let recentsStore: RecentsStore
-    private let discoveryService: ApplicationDiscoveryService
+    private nonisolated let discoveryService: ApplicationDiscoveryService
     private let layoutStore: LayoutStore
     private let preferences: AppPreferences
     private let focusPublisher = PassthroughSubject<Void, Never>()
@@ -29,11 +30,15 @@ final class AppState: ObservableObject {
     }
 
     init(preferences: AppPreferences,
-         favoritesStore: FavoritesStore = FavoritesStore(),
-         recentsStore: RecentsStore = RecentsStore(maxCount: 12),
-         discoveryService: ApplicationDiscoveryService = ApplicationDiscoveryService(),
-         layoutStore: LayoutStore = LayoutStore()) {
+         favoritesStore: FavoritesStore? = nil,
+         recentsStore: RecentsStore? = nil,
+         discoveryService: ApplicationDiscoveryService? = nil,
+         layoutStore: LayoutStore? = nil) {
         self.preferences = preferences
+        let favoritesStore = favoritesStore ?? FavoritesStore()
+        let recentsStore = recentsStore ?? RecentsStore(maxCount: 12)
+        let discoveryService = discoveryService ?? ApplicationDiscoveryService()
+        let layoutStore = layoutStore ?? LayoutStore()
         self.favoritesStore = favoritesStore
         self.recentsStore = recentsStore
         self.discoveryService = discoveryService
@@ -59,9 +64,9 @@ final class AppState: ObservableObject {
         let includeSystemApps = preferences.showSystemApps
         let discoveryService = discoveryService
         Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self else { return }
-            let discovered = discoveryService.discoverApplications(includeSystemApps: includeSystemApps)
+            let discovered = await discoveryService.discoverApplications(includeSystemApps: includeSystemApps)
             await MainActor.run {
+                guard let self else { return }
                 self.handleDiscoveredApps(discovered)
             }
         }
@@ -200,7 +205,7 @@ final class AppState: ObservableObject {
 
     func exportAppCatalog() {
         let panel = NSSavePanel()
-        panel.allowedFileTypes = ["json"]
+        panel.allowedContentTypes = [.json]
         panel.isExtensionHidden = false
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = defaultExportFileName()
@@ -454,8 +459,8 @@ final class AppState: ObservableObject {
             if #available(macOS 13.0, *) {
                 encoder.dateEncodingStrategy = .iso8601
             } else {
-                let formatter = ISO8601DateFormatter()
                 encoder.dateEncodingStrategy = .custom { date, encoder in
+                    let formatter = ISO8601DateFormatter()
                     let string = formatter.string(from: date)
                     var container = encoder.singleValueContainer()
                     try container.encode(string)
