@@ -95,6 +95,10 @@ final class AppPreferences: ObservableObject {
     @Published var showSystemApps: Bool
     @Published var gridScale: GridScale
     @Published var sortOption: SortOption
+    @Published var showRecentApps: Bool
+    @Published var showMenuBarIcon: Bool
+    @Published var isGlobalShortcutEnabled: Bool
+    @Published var globalShortcut: KeyboardShortcutPreference
 
     private let defaults: UserDefaults
     fileprivate var cancellables = Set<AnyCancellable>()
@@ -103,6 +107,10 @@ final class AppPreferences: ObservableObject {
         static let showSystemApps = "preferences.showSystemApps"
         static let gridScale = "preferences.gridScale"
         static let sortOption = "preferences.sortOption"
+        static let showRecentApps = "preferences.showRecentApps"
+        static let showMenuBarIcon = "preferences.showMenuBarIcon"
+        static let globalShortcutEnabled = "preferences.globalShortcutEnabled"
+        static let globalShortcut = "preferences.globalShortcut"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -118,6 +126,31 @@ final class AppPreferences: ObservableObject {
 
         let storedSort = defaults.integer(forKey: Keys.sortOption)
         sortOption = SortOption(rawValue: storedSort) ?? .custom
+
+        if defaults.object(forKey: Keys.showRecentApps) == nil {
+            defaults.set(true, forKey: Keys.showRecentApps)
+        }
+        showRecentApps = defaults.object(forKey: Keys.showRecentApps).map { _ in defaults.bool(forKey: Keys.showRecentApps) } ?? true
+
+        if defaults.object(forKey: Keys.showMenuBarIcon) == nil {
+            defaults.set(true, forKey: Keys.showMenuBarIcon)
+        }
+        showMenuBarIcon = defaults.bool(forKey: Keys.showMenuBarIcon)
+
+        if defaults.object(forKey: Keys.globalShortcutEnabled) == nil {
+            defaults.set(true, forKey: Keys.globalShortcutEnabled)
+        }
+        isGlobalShortcutEnabled = defaults.bool(forKey: Keys.globalShortcutEnabled)
+
+        if let shortcutData = defaults.data(forKey: Keys.globalShortcut),
+           let decoded = try? JSONDecoder().decode(KeyboardShortcutPreference.self, from: shortcutData) {
+            globalShortcut = decoded
+        } else {
+            globalShortcut = .default
+            if let data = try? JSONEncoder().encode(globalShortcut) {
+                defaults.set(data, forKey: Keys.globalShortcut)
+            }
+        }
 
         bind()
     }
@@ -141,6 +174,35 @@ final class AppPreferences: ObservableObject {
             .dropFirst()
             .sink { [weak self] value in
                 self?.defaults.set(value.rawValue, forKey: Keys.sortOption)
+            }
+            .store(in: &cancellables)
+
+        $showRecentApps
+            .dropFirst()
+            .sink { [weak self] value in
+                self?.defaults.set(value, forKey: Keys.showRecentApps)
+            }
+            .store(in: &cancellables)
+
+        $showMenuBarIcon
+            .dropFirst()
+            .sink { [weak self] value in
+                self?.defaults.set(value, forKey: Keys.showMenuBarIcon)
+            }
+            .store(in: &cancellables)
+
+        $isGlobalShortcutEnabled
+            .dropFirst()
+            .sink { [weak self] value in
+                self?.defaults.set(value, forKey: Keys.globalShortcutEnabled)
+            }
+            .store(in: &cancellables)
+
+        $globalShortcut
+            .dropFirst()
+            .sink { [weak self] value in
+                guard let data = try? JSONEncoder().encode(value) else { return }
+                self?.defaults.set(data, forKey: Keys.globalShortcut)
             }
             .store(in: &cancellables)
     }

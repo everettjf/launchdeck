@@ -64,7 +64,7 @@ struct ContentView: View {
                             AppGridSection(title: "Favorites",
                                             apps: favoriteApps)
                         }
-                        if !recentApps.isEmpty {
+                        if preferences.showRecentApps && !recentApps.isEmpty {
                             AppGridSection(title: "Recently Launched",
                                             apps: recentApps) {
                                 Button("Clear") {

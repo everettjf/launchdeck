@@ -22,6 +22,17 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Collections") {
+                Toggle(isOn: $preferences.showRecentApps) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Show Recent Launches")
+                        Text("Controls whether the Recently Launched section appears on the home screen.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Section("Appearance") {
                 Picker("Tile Size", selection: $preferences.gridScale) {
                     ForEach(AppPreferences.GridScale.allCases, id: \.self) { scale in
@@ -51,6 +62,39 @@ struct SettingsView: View {
                     }
                 }
                 .padding(.top, 6)
+            }
+
+            Section("Quick Access") {
+                Toggle(isOn: $preferences.showMenuBarIcon) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Show Menu Bar Icon")
+                        Text("Provides quick access from the menu bar to launch the app and toggle key settings.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Toggle(isOn: $preferences.isGlobalShortcutEnabled) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Enable Global Shortcut")
+                        Text("Use a keyboard shortcut to bring StartMyApp to the front and focus search.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if preferences.isGlobalShortcutEnabled {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Shortcut")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ShortcutRecorderView(shortcut: $preferences.globalShortcut)
+                        Text("Press Escape to cancel while recording. At least one modifier key is required.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
             }
         }
         .padding(24)
