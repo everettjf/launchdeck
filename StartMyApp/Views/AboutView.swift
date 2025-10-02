@@ -5,7 +5,7 @@ struct AboutView: View {
     private var appVersion: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
-        return "版本 \(version) (\(build))"
+        return "Version \(version) (\(build))"
     }
 
     private var copyright: String {
@@ -32,8 +32,8 @@ struct AboutView: View {
             Divider()
 
             VStack(spacing: 8) {
-                Link("支持与反馈", destination: URL(string: "https://example.com/support")!)
-                Link("隐私政策", destination: URL(string: "https://example.com/privacy")!)
+                Link("Support & Feedback", destination: URL(string: "https://example.com/support")!)
+                Link("Privacy Policy", destination: URL(string: "https://example.com/privacy")!)
             }
 
             Divider()

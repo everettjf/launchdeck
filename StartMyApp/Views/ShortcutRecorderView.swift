@@ -38,7 +38,7 @@ struct ShortcutRecorderView: View {
     }
 
     private var labelText: String {
-        isCapturing ? "按下新的快捷键…" : shortcut.displayString
+        isCapturing ? "Press a new shortcut…" : shortcut.displayString
     }
 
     private func toggleCapture() {

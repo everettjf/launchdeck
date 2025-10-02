@@ -11,7 +11,7 @@ final class AboutWindowController: NSWindowController {
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.level = .floating
         window.center()
-        window.title = String(format: NSLocalizedString("关于 %@", comment: "About window title"), Bundle.main.appDisplayName)
+        window.title = String(format: NSLocalizedString("About %@", comment: "About window title"), Bundle.main.appDisplayName)
         window.isReleasedWhenClosed = false
         super.init(window: window)
     }

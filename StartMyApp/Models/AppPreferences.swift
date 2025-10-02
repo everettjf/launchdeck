@@ -117,9 +117,9 @@ final class AppPreferences: ObservableObject {
         self.defaults = defaults
 
         if defaults.object(forKey: Keys.showSystemApps) == nil {
-            defaults.set(false, forKey: Keys.showSystemApps)
+            defaults.set(true, forKey: Keys.showSystemApps)
         }
-        showSystemApps = defaults.bool(forKey: Keys.showSystemApps)
+        showSystemApps = defaults.object(forKey: Keys.showSystemApps).map { _ in defaults.bool(forKey: Keys.showSystemApps) } ?? true
 
         let storedScale = defaults.integer(forKey: Keys.gridScale)
         gridScale = GridScale(rawValue: storedScale) ?? .comfortable

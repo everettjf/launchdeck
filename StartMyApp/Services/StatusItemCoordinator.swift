@@ -62,30 +62,30 @@ final class StatusItemCoordinator: ObservableObject {
         guard let statusItem else { return }
         let menu = NSMenu()
 
-        menu.addItem(makeMenuItem(title: "打开 StartMyApp", action: #selector(openMainWindow)))
-        menu.addItem(makeMenuItem(title: "聚焦搜索", action: #selector(focusSearch)))
-        menu.addItem(makeMenuItem(title: "刷新应用列表", action: #selector(refreshApplications)))
+        menu.addItem(makeMenuItem(title: "Open StartMyApp", action: #selector(openMainWindow)))
+        menu.addItem(makeMenuItem(title: "Focus Search", action: #selector(focusSearch)))
+        menu.addItem(makeMenuItem(title: "Refresh Applications", action: #selector(refreshApplications)))
         menu.addItem(.separator())
 
-        let recentsItem = makeMenuItem(title: "显示最近使用", action: #selector(toggleRecents))
+        let recentsItem = makeMenuItem(title: "Show Recent Launches", action: #selector(toggleRecents))
         recentsItem.state = preferences.showRecentApps ? .on : .off
         menu.addItem(recentsItem)
 
-        let shortcutItem = makeMenuItem(title: "启用全局快捷键", action: #selector(toggleShortcut))
+        let shortcutItem = makeMenuItem(title: "Enable Global Shortcut", action: #selector(toggleShortcut))
         shortcutItem.state = preferences.isGlobalShortcutEnabled ? .on : .off
         menu.addItem(shortcutItem)
 
         if preferences.isGlobalShortcutEnabled {
-            let currentShortcut = NSMenuItem(title: "当前：\(preferences.globalShortcut.displayString)", action: nil, keyEquivalent: "")
+            let currentShortcut = NSMenuItem(title: "Current: \(preferences.globalShortcut.displayString)", action: nil, keyEquivalent: "")
             currentShortcut.isEnabled = false
             menu.addItem(currentShortcut)
         }
 
         menu.addItem(.separator())
-        menu.addItem(makeMenuItem(title: "设置…", action: #selector(openSettings)))
-        menu.addItem(makeMenuItem(title: "关于 StartMyApp", action: #selector(openAbout)))
+        menu.addItem(makeMenuItem(title: "Settings…", action: #selector(openSettings)))
+        menu.addItem(makeMenuItem(title: "About StartMyApp", action: #selector(openAbout)))
         menu.addItem(.separator())
-        menu.addItem(makeMenuItem(title: "退出", action: #selector(terminate)))
+        menu.addItem(makeMenuItem(title: "Quit", action: #selector(terminate)))
 
         statusItem.menu = menu
     }

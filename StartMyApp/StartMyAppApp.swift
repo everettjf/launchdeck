@@ -28,7 +28,7 @@ struct StartMyAppApp: App {
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button(String(format: NSLocalizedString("关于 %@", comment: "About menu title"), Bundle.main.appDisplayName)) {
+                Button(String(format: NSLocalizedString("About %@", comment: "About menu title"), Bundle.main.appDisplayName)) {
                     AboutWindowController.shared.show()
                 }
             }
