@@ -4,7 +4,6 @@ struct AppInfoView: View {
     let info: AppInfoData
 
     @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
     @State private var icon: NSImage?
 
     private var monospacedFont: Font { .system(.body, design: .monospaced) }
@@ -45,7 +44,6 @@ struct AppInfoView: View {
 
                 Button("Close") {
                     appState.dismissAppInfo()
-                    dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
             }

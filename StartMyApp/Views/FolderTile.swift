@@ -63,9 +63,6 @@ struct FolderTile: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
-                        Text("\(folder.appIdentifiers.count) apps")
-                            .font(.system(size: max(9, preferences.gridScale.labelFontSize - 1)))
-                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -260,6 +257,13 @@ private struct FolderPopoverContent: View {
         folder.appIdentifiers.compactMap { appState.app(for: $0) }
     }
 
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: preferences.gridScale.minimumTileWidth,
+                             maximum: preferences.gridScale.maximumTileWidth),
+                  spacing: preferences.gridScale.horizontalSpacing,
+                  alignment: .top)]
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -280,6 +284,7 @@ private struct FolderPopoverContent: View {
                     Button("Done", action: commitRename)
                 }
             }
+            .padding(.horizontal, 4)
 
             if apps.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -292,13 +297,18 @@ private struct FolderPopoverContent: View {
                 Spacer()
             } else {
                 ScrollView {
-                    VStack(spacing: 10) {
+                    LazyVGrid(columns: columns,
+                              alignment: .leading,
+                              spacing: preferences.gridScale.verticalSpacing) {
                         ForEach(apps, id: \.identifier) { app in
-                            FolderAppRow(app: app, folderID: itemID)
+                            AppTile(app: app,
+                                    folderID: itemID)
                                 .environmentObject(appState)
+                                .environmentObject(preferences)
                         }
                     }
                     .padding(.vertical, 8)
+                    .padding(.horizontal, 4)
                 }
             }
         }
@@ -310,70 +320,5 @@ private struct FolderPopoverContent: View {
         guard !trimmed.isEmpty else { return }
         appState.renameFolder(id: itemID, to: trimmed)
         isRenaming = false
-    }
-}
-
-private struct FolderAppRow: View {
-    let app: DiscoveredApp
-    let folderID: String
-
-    @EnvironmentObject private var appState: AppState
-    @State private var icon: NSImage?
-
-    private var iconSize: CGFloat { 36 }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Group {
-                if let icon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                } else {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.secondary.opacity(0.25))
-                        .overlay(
-                            ProgressView()
-                        )
-                }
-            }
-            .frame(width: iconSize, height: iconSize)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(app.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .help(app.name)
-            }
-            Spacer()
-            Button {
-                appState.launch(app)
-            } label: {
-                Image(systemName: "play.circle")
-            }
-            .buttonStyle(.borderless)
-            .help("Launch \(app.name)")
-
-            Button(role: .destructive) {
-                appState.removeApp(app.identifier, fromFolder: folderID)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.borderless)
-            .help("Remove from folder")
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-        )
-        .onAppear(perform: loadIcon)
-    }
-
-    private func loadIcon() {
-        AppIconCache.shared.icon(for: app.path, size: iconSize) { image in
-            icon = image
-        }
     }
 }

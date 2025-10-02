@@ -10,6 +10,7 @@ struct AppTile: View {
     @State private var icon: NSImage?
     @State private var isHovering = false
 
+    var folderID: String? = nil
     var isDropTarget: Bool = false
     var isReorderTarget: Bool = false
     var onSizeChange: ((CGSize) -> Void)? = nil
@@ -77,6 +78,12 @@ struct AppTile: View {
             }
             Button("App Info") {
                 appState.presentAppInfo(for: app)
+            }
+            if let folderID {
+                Divider()
+                Button("Remove from Folder") {
+                    appState.removeApp(app.identifier, fromFolder: folderID)
+                }
             }
             Divider()
             if appState.recents.contains(where: { $0.identifier == app.identifier }) {
