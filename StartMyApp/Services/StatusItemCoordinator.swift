@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 
-final class StatusItemCoordinator: ObservableObject {
+final class StatusItemCoordinator: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
     private let preferences: AppPreferences
     private let appState: AppState
@@ -10,6 +10,7 @@ final class StatusItemCoordinator: ObservableObject {
     init(preferences: AppPreferences, appState: AppState) {
         self.preferences = preferences
         self.appState = appState
+        super.init()
         setupBindings()
         updateStatusItemVisibility(show: preferences.showMenuBarIcon)
     }

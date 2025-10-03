@@ -6,10 +6,10 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("General") {
-                Toggle(isOn: $preferences.showSystemApps) {
+                Toggle(isOn: preferences.hideSystemAppsBinding) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Show System Applications")
-                        Text("Include built-in macOS apps in search results and lists.")
+                        Text("Hide System Applications")
+                        Text("Remove built-in macOS apps from search results and collections.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

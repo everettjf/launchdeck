@@ -36,7 +36,7 @@ struct StartMyAppApp: App {
             CommandGroup(after: .newItem) {
                 Button("Refresh Applications", action: appState.refreshApps)
                     .keyboardShortcut("r", modifiers: [.command])
-                Toggle("Show System Applications", isOn: $preferences.showSystemApps)
+                Toggle("Hide System Applications", isOn: preferences.hideSystemAppsBinding)
                 Toggle("Show Recent Launches", isOn: $preferences.showRecentApps)
                 Divider()
                 Picker("Grid Size", selection: $preferences.gridScale) {

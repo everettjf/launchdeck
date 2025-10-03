@@ -155,6 +155,13 @@ final class AppPreferences: ObservableObject {
         bind()
     }
 
+    var hideSystemAppsBinding: Binding<Bool> {
+        Binding(
+            get: { !self.showSystemApps },
+            set: { self.showSystemApps = !$0 }
+        )
+    }
+
     private func bind() {
         $showSystemApps
             .dropFirst()
