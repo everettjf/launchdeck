@@ -54,18 +54,22 @@ final class AppState: ObservableObject {
     private func setupBindings() {
         preferences.$showSystemApps
             .removeDuplicates()
-            .sink { [weak self] _ in
-                self?.refreshApps()
+            .sink { [weak self] newValue in
+                self?.refreshApps(showSystemApps: newValue)
             }
             .store(in: &cancellables)
     }
 
     func refreshApps() {
-        let includeSystemApps = preferences.showSystemApps
+        refreshApps(showSystemApps: preferences.showSystemApps)
+    }
+
+    private func refreshApps(showSystemApps: Bool) {
+        print("refresh apps with show system app: \(showSystemApps)")
         let discoveryService = discoveryService
         weak var weakSelf = self
         Task.detached(priority: .userInitiated) {
-            let discovered = discoveryService.discoverApplications(includeSystemApps: includeSystemApps)
+            let discovered = discoveryService.discoverApplications(showSystemApps: showSystemApps)
             await MainActor.run {
                 guard let appState = weakSelf else { return }
                 appState.handleDiscoveredApps(discovered)

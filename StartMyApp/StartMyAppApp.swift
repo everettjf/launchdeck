@@ -34,8 +34,6 @@ struct StartMyAppApp: App {
             }
 
             CommandGroup(after: .newItem) {
-                Button("Refresh Applications", action: appState.refreshApps)
-                    .keyboardShortcut("r", modifiers: [.command])
                 Toggle("Show System Applications", isOn: preferences.showSystemAppsBinding)
                 Toggle("Show Recent Launches", isOn: $preferences.showRecentApps)
                 Divider()

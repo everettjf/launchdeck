@@ -27,8 +27,8 @@ final class ApplicationDiscoveryService {
         self.searchPaths = paths
     }
 
-    func discoverApplications(includeSystemApps: Bool) -> [DiscoveredApp] {
-        print("discover applications with : \(includeSystemApps ? "include system apps" : "exclude system apps")")
+    func discoverApplications(showSystemApps: Bool) -> [DiscoveredApp] {
+        print("discover applications with : \(showSystemApps ? "include system apps" : "exclude system apps")")
         var applications: [String: DiscoveredApp] = [:]
 
         for baseURL in searchPaths {
@@ -46,7 +46,7 @@ final class ApplicationDiscoveryService {
                 enumerator.skipDescendants()
 
                 guard let app = makeApp(from: url) else { continue }
-                if !includeSystemApps && app.isSystemApp {
+                if !showSystemApps && app.isSystemApp {
                     continue
                 }
                 if applications[app.identifier] != nil {
