@@ -129,55 +129,60 @@ struct ContentView: View {
                 Text("\(appState.totalAppCount)")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                
-                Button {
-                    appState.refreshApps()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .imageScale(.medium)
-                }
-                .buttonStyle(.bordered)
-                .help("Rescan installed applications")
+
                 Menu {
-                    ForEach(AppPreferences.SortOption.allCases) { option in
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                preferences.sortOption = option
-                            }
-                        } label: {
-                            if option == preferences.sortOption {
-                                Label(option.title, systemImage: "checkmark")
-                            } else {
-                                Text(option.title)
+                    Button {
+                        appState.refreshApps()
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+
+                    Divider()
+
+                    Menu {
+                        ForEach(AppPreferences.SortOption.allCases) { option in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    preferences.sortOption = option
+                                }
+                            } label: {
+                                if option == preferences.sortOption {
+                                    Label(option.title, systemImage: "checkmark")
+                                } else {
+                                    Text(option.title)
+                                }
                             }
                         }
+                        if preferences.sortOption != .custom {
+                            Divider()
+                            Button("Restore Default Order") {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    preferences.sortOption = .custom
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Sort", systemImage: "arrow.up.arrow.down")
                     }
-                    if preferences.sortOption != .custom {
-                        Divider()
-                        Button("Restore Default Order") {
+
+                    Divider()
+
+                    Button {
+                        if preferences.sortOption != .custom {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 preferences.sortOption = .custom
                             }
                         }
+                        newFolderName = ""
+                        isCreatingFolder = true
+                    } label: {
+                        Label("New Folder", systemImage: "folder.badge.plus")
                     }
                 } label: {
-                    Label(preferences.sortOption.shortLabel, systemImage: "arrow.up.arrow.down")
+                    Image(systemName: "ellipsis.circle")
                 }
-                .help("Adjust the application sort order")
-
-                Button {
-                    if preferences.sortOption != .custom {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            preferences.sortOption = .custom
-                        }
-                    }
-                    newFolderName = ""
-                    isCreatingFolder = true
-                } label: {
-                    Image(systemName: "folder.badge.plus")
-                }
+                .menuStyle(.borderlessButton)
                 .buttonStyle(.bordered)
-                .help("Create a custom folder to organize your apps")
             }
 
             if !searchText.isEmpty {
