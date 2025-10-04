@@ -6,7 +6,7 @@ struct KeyboardShortcutPreference: Codable, Equatable {
     var modifiers: NSEvent.ModifierFlags
 
     static let `default` = KeyboardShortcutPreference(keyCode: 49, // space bar
-                                                      modifiers: [.command, .shift, .control])
+                                                      modifiers: [.command, .shift])
 
     init(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) {
         self.keyCode = keyCode

@@ -1,80 +1,204 @@
 import AppKit
 import SwiftUI
 
-struct ShortcutRecorderView: View {
+struct ShortcutRecorderView: NSViewRepresentable {
     @Binding var shortcut: KeyboardShortcutPreference
 
-    @State private var isCapturing = false
-    @State private var localMonitor: Any?
+    func makeNSView(context: Context) -> ShortcutRecorderControl {
+        let control = ShortcutRecorderControl()
+        control.currentShortcut = shortcut
+        control.onShortcutChange = { newShortcut in
+            shortcut = newShortcut
+        }
+        return control
+    }
 
-    var body: some View {
-        Button(action: toggleCapture) {
-            HStack(spacing: 8) {
-                Image(systemName: "keyboard")
-                    .imageScale(.medium)
-                    .foregroundStyle(.secondary)
-                Text(labelText)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.primary)
+    func updateNSView(_ nsView: ShortcutRecorderControl, context: Context) {
+        nsView.currentShortcut = shortcut
+    }
+}
+
+final class ShortcutRecorderControl: NSControl {
+    var currentShortcut: KeyboardShortcutPreference = .default {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    var onShortcutChange: ((KeyboardShortcutPreference) -> Void)?
+
+    private var isRecording = false {
+        didSet {
+            needsDisplay = true
+            if isRecording {
+                startMonitoring()
+            } else {
+                stopMonitoring()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isCapturing ? Color.accentColor : Color.primary.opacity(0.15), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Configure shortcut")
-        .onChange(of: isCapturing) { _, capturing in
-            capturing ? startCapture() : stopCapture()
-        }
-        .onDisappear(perform: stopCapture)
-    }
-
-    private var labelText: String {
-        isCapturing ? "Press a new shortcut…" : shortcut.displayString
-    }
-
-    private func toggleCapture() {
-        isCapturing.toggle()
-    }
-
-    private func startCapture() {
-        stopCapture()
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            handle(event: event)
-            return nil
         }
     }
 
-    private func stopCapture() {
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-        }
-        localMonitor = nil
-        isCapturing = false
+    private var eventMonitor: Any?
+
+    override var acceptsFirstResponder: Bool { true }
+    override var canBecomeKeyView: Bool { true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.cgColor
     }
 
-    private func handle(event: NSEvent) {
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
-        if event.keyCode == 53 && modifiers.isEmpty { // escape cancels
-            stopCapture()
+    deinit {
+        stopMonitoring()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: 32)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        let text = isRecording ? "Press shortcut keys..." : currentShortcut.displayString
+        let color: NSColor = isRecording ? .controlAccentColor : .labelColor
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color
+        ]
+
+        let size = text.size(withAttributes: attrs)
+        let rect = NSRect(
+            x: (bounds.width - size.width) / 2,
+            y: (bounds.height - size.height) / 2,
+            width: size.width,
+            height: size.height
+        )
+
+        text.draw(in: rect, withAttributes: attrs)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        print("Mouse down - toggling recording")
+        isRecording.toggle()
+        if isRecording {
+            window?.makeFirstResponder(self)
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        print("KeyDown received: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
+
+        guard isRecording else {
+            super.keyDown(with: event)
             return
         }
 
-        guard !modifiers.isEmpty else { return }
-        guard !isPureModifier(event.keyCode) else { return }
+        // Escape to cancel
+        if event.keyCode == 53 {
+            print("Escape - canceling")
+            isRecording = false
+            return
+        }
 
-        let updated = shortcut.withUpdated(keyCode: event.keyCode, modifiers: modifiers)
-        shortcut = updated
-        stopCapture()
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        // Ignore pure modifier keys
+        if isPureModifier(event.keyCode) {
+            print("Pure modifier key, ignoring")
+            return
+        }
+
+        // Require at least one modifier
+        guard !modifiers.isEmpty else {
+            print("No modifiers present")
+            NSSound.beep()
+            return
+        }
+
+        print("✅ Shortcut recorded: \(event.keyCode) + \(modifiers)")
+        let newShortcut = KeyboardShortcutPreference(keyCode: event.keyCode, modifiers: modifiers)
+        currentShortcut = newShortcut
+        onShortcutChange?(newShortcut)
+        isRecording = false
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        print("performKeyEquivalent: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
+
+        guard isRecording else {
+            return super.performKeyEquivalent(with: event)
+        }
+
+        return handleKeyEvent(event)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        // Just ignore modifier-only events
+        print("Flags changed: \(event.modifierFlags)")
+    }
+
+    private func startMonitoring() {
+        print("Starting GLOBAL event monitor")
+        stopMonitoring()
+
+        // Use GLOBAL monitor to catch Command key combinations
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            print("Global monitor caught event: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
+            self?.handleKeyEvent(event)
+        }
+    }
+
+    private func stopMonitoring() {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+            print("Event monitor stopped")
+        }
+    }
+
+    @discardableResult
+    private func handleKeyEvent(_ event: NSEvent) -> Bool {
+        print("handleKeyEvent: keyCode=\(event.keyCode), chars=\(event.characters ?? "nil")")
+
+        // Escape to cancel
+        if event.keyCode == 53 {
+            print("Escape - canceling")
+            isRecording = false
+            return true
+        }
+
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        print("  Modifiers extracted: \(modifiers.rawValue)")
+        print("  Is pure modifier: \(isPureModifier(event.keyCode))")
+
+        // Ignore pure modifier keys
+        if isPureModifier(event.keyCode) {
+            print("Pure modifier key, ignoring")
+            return false
+        }
+
+        // Require at least one modifier
+        guard !modifiers.isEmpty else {
+            print("No modifiers present")
+            NSSound.beep()
+            return false
+        }
+
+        print("✅ Shortcut recorded: keyCode=\(event.keyCode) + \(modifiers)")
+        let newShortcut = KeyboardShortcutPreference(keyCode: event.keyCode, modifiers: modifiers)
+        currentShortcut = newShortcut
+        onShortcutChange?(newShortcut)
+        isRecording = false
+        return true
     }
 
     private func isPureModifier(_ keyCode: UInt16) -> Bool {
