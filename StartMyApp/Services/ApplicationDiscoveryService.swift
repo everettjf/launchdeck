@@ -28,6 +28,7 @@ final class ApplicationDiscoveryService {
     }
 
     func discoverApplications(includeSystemApps: Bool) -> [DiscoveredApp] {
+        print("discover applications with : \(includeSystemApps ? "include system apps" : "exclude system apps")")
         var applications: [String: DiscoveredApp] = [:]
 
         for baseURL in searchPaths {

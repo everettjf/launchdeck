@@ -32,8 +32,8 @@ struct AboutView: View {
             Divider()
 
             VStack(spacing: 8) {
-                Link("Support & Feedback", destination: URL(string: "https://example.com/support")!)
-                Link("Privacy Policy", destination: URL(string: "https://example.com/privacy")!)
+                Link("Support & Feedback", destination: URL(string: "https://startmy.app")!)
+                Link("Privacy Policy", destination: URL(string: "https://startmy.app/privacy")!)
             }
 
             Divider()

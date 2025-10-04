@@ -3,6 +3,7 @@ import Combine
 
 final class StatusItemCoordinator: NSObject, ObservableObject {
     private var statusItem: NSStatusItem?
+    private var menu: NSMenu?
     private let preferences: AppPreferences
     private let appState: AppState
     private var cancellables = Set<AnyCancellable>()
@@ -54,6 +55,8 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: Bundle.main.appDisplayName)
             button.imagePosition = .imageOnly
+            button.action = #selector(statusItemClicked(_:))
+            button.target = self
         }
         statusItem = item
         refreshMenu()
@@ -62,10 +65,9 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
     private func refreshMenu() {
         guard let statusItem else { return }
         let menu = NSMenu()
+        menu.delegate = self
 
         menu.addItem(makeMenuItem(title: "Open StartMyApp", action: #selector(openMainWindow)))
-        menu.addItem(makeMenuItem(title: "Focus Search", action: #selector(focusSearch)))
-        menu.addItem(makeMenuItem(title: "Refresh Applications", action: #selector(refreshApplications)))
         menu.addItem(.separator())
 
         let recentsItem = makeMenuItem(title: "Show Recent Launches", action: #selector(toggleRecents))
@@ -83,12 +85,12 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
         }
 
         menu.addItem(.separator())
-        menu.addItem(makeMenuItem(title: "Settings…", action: #selector(openSettings)))
-        menu.addItem(makeMenuItem(title: "About StartMyApp", action: #selector(openAbout)))
+        menu.addItem(makeMenuItem(title: "Settings", action: #selector(openSettings)))
+        menu.addItem(makeMenuItem(title: "About", action: #selector(openAbout)))
         menu.addItem(.separator())
         menu.addItem(makeMenuItem(title: "Quit", action: #selector(terminate)))
 
-        statusItem.menu = menu
+        self.menu = menu
     }
 
     private func makeMenuItem(title: String, action: Selector?) -> NSMenuItem {
@@ -99,19 +101,6 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
 
     @objc private func openMainWindow() {
         WindowManager.shared.showMainWindow()
-    }
-
-    @objc private func focusSearch() {
-        WindowManager.shared.showMainWindow()
-        Task { @MainActor in
-            self.appState.postSearchFocusRequest()
-        }
-    }
-
-    @objc private func refreshApplications() {
-        Task { @MainActor in
-            self.appState.refreshApps()
-        }
     }
 
     @objc private func toggleRecents() {
@@ -132,5 +121,18 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
 
     @objc private func terminate() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        guard let menu = menu else { return }
+        statusItem?.menu = menu
+        statusItem?.button?.performClick(nil)
+        statusItem?.menu = nil
+    }
+}
+
+extension StatusItemCoordinator: NSMenuDelegate {
+    func menuDidClose(_ menu: NSMenu) {
+        statusItem?.menu = nil
     }
 }
