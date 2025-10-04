@@ -98,8 +98,8 @@ struct ContentView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 32)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
             }
         }
         .opacity(didAppear ? 1 : 0)
@@ -120,8 +120,66 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 12) {
             searchField
-                .frame(maxWidth: 420)
+                .frame(maxWidth: 500)
             Spacer()
+
+            if searchText.isEmpty {
+                Text("All Applications")
+                    .font(.title3.weight(.semibold))
+                Text("\(appState.totalAppCount)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                
+                Button {
+                    appState.refreshApps()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .imageScale(.medium)
+                }
+                .buttonStyle(.bordered)
+                .help("Rescan installed applications")
+                Menu {
+                    ForEach(AppPreferences.SortOption.allCases) { option in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                preferences.sortOption = option
+                            }
+                        } label: {
+                            if option == preferences.sortOption {
+                                Label(option.title, systemImage: "checkmark")
+                            } else {
+                                Text(option.title)
+                            }
+                        }
+                    }
+                    if preferences.sortOption != .custom {
+                        Divider()
+                        Button("Restore Default Order") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                preferences.sortOption = .custom
+                            }
+                        }
+                    }
+                } label: {
+                    Label(preferences.sortOption.shortLabel, systemImage: "arrow.up.arrow.down")
+                }
+                .help("Adjust the application sort order")
+
+                Button {
+                    if preferences.sortOption != .custom {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            preferences.sortOption = .custom
+                        }
+                    }
+                    newFolderName = ""
+                    isCreatingFolder = true
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                .help("Create a custom folder to organize your apps")
+            }
+
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
@@ -133,17 +191,9 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .help("Clear search")
             }
-            Button {
-                appState.refreshApps()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .imageScale(.medium)
-            }
-            .buttonStyle(.bordered)
-            .help("Rescan installed applications")
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
         .background(.ultraThickMaterial)
     }
 
@@ -211,55 +261,6 @@ private func configure() {
 
 private var allApplicationsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Text("All Applications")
-                    .font(.title3.weight(.semibold))
-                Text("\(appState.totalAppCount)")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Menu {
-                    ForEach(AppPreferences.SortOption.allCases) { option in
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                preferences.sortOption = option
-                            }
-                        } label: {
-                            if option == preferences.sortOption {
-                                Label(option.title, systemImage: "checkmark")
-                            } else {
-                                Text(option.title)
-                            }
-                        }
-                    }
-                    if preferences.sortOption != .custom {
-                        Divider()
-                        Button("Restore Default Order") {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                preferences.sortOption = .custom
-                            }
-                        }
-                    }
-                } label: {
-                    Label(preferences.sortOption.shortLabel, systemImage: "arrow.up.arrow.down")
-                }
-                .help("Adjust the application sort order")
-
-                Button {
-                    if preferences.sortOption != .custom {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            preferences.sortOption = .custom
-                        }
-                    }
-                    newFolderName = ""
-                    isCreatingFolder = true
-                } label: {
-                    Image(systemName: "folder.badge.plus")
-                }
-                .buttonStyle(.bordered)
-                .help("Create a custom folder to organize your apps")
-            }
-
             if appState.orderedCollections().isEmpty {
                 Text("No applications were found on this Mac.")
                     .font(.callout)
