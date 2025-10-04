@@ -65,14 +65,9 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
     private func refreshMenu() {
         guard let statusItem else { return }
         let menu = NSMenu()
-        menu.delegate = self
 
         menu.addItem(makeMenuItem(title: "Open StartMyApp", action: #selector(openMainWindow)))
         menu.addItem(.separator())
-
-        let recentsItem = makeMenuItem(title: "Show Recent Launches", action: #selector(toggleRecents))
-        recentsItem.state = preferences.showRecentApps ? .on : .off
-        menu.addItem(recentsItem)
 
         let shortcutItem = makeMenuItem(title: "Enable Global Shortcut", action: #selector(toggleShortcut))
         shortcutItem.state = preferences.isGlobalShortcutEnabled ? .on : .off
@@ -84,9 +79,6 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
             menu.addItem(currentShortcut)
         }
 
-        menu.addItem(.separator())
-        menu.addItem(makeMenuItem(title: "Settings", action: #selector(openSettings)))
-        menu.addItem(makeMenuItem(title: "About", action: #selector(openAbout)))
         menu.addItem(.separator())
         menu.addItem(makeMenuItem(title: "Quit", action: #selector(terminate)))
 
@@ -103,20 +95,8 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
         WindowManager.shared.showMainWindow()
     }
 
-    @objc private func toggleRecents() {
-        preferences.showRecentApps.toggle()
-    }
-
     @objc private func toggleShortcut() {
         preferences.isGlobalShortcutEnabled.toggle()
-    }
-
-    @objc private func openSettings() {
-        NSApp.presentSettings()
-    }
-
-    @objc private func openAbout() {
-        AboutWindowController.shared.show()
     }
 
     @objc private func terminate() {
@@ -124,15 +104,7 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
-        guard let menu = menu else { return }
-        statusItem?.menu = menu
-        statusItem?.button?.performClick(nil)
-        statusItem?.menu = nil
-    }
-}
-
-extension StatusItemCoordinator: NSMenuDelegate {
-    func menuDidClose(_ menu: NSMenu) {
-        statusItem?.menu = nil
+        guard let menu = menu, let button = statusItem?.button else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height), in: button)
     }
 }

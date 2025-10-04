@@ -2,6 +2,10 @@ import AppKit
 
 extension NSApplication {
     func presentSettings() {
-        sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        if #available(macOS 13, *) {
+            sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
     }
 }
