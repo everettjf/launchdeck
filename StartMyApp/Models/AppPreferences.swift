@@ -75,10 +75,10 @@ final class AppPreferences: ObservableObject {
 
         var shortLabel: String {
             switch self {
-            case .custom: return "Sort: Custom"
-            case .alphabetical: return "Sort: Name"
-            case .mostLaunched: return "Sort: Most Launched"
-            case .recentlyLaunched: return "Sort: Recent"
+            case .custom: return "Custom"
+            case .alphabetical: return "Name"
+            case .mostLaunched: return "Most Launched"
+            case .recentlyLaunched: return "Recent"
             }
         }
 

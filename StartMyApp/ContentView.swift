@@ -254,7 +254,7 @@ private var allApplicationsSection: some View {
                     newFolderName = ""
                     isCreatingFolder = true
                 } label: {
-                    Label("New Folder", systemImage: "folder.badge.plus")
+                    Image(systemName: "folder.badge.plus")
                 }
                 .buttonStyle(.bordered)
                 .help("Create a custom folder to organize your apps")
