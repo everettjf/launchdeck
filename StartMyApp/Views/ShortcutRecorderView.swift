@@ -39,6 +39,7 @@ final class ShortcutRecorderControl: NSControl {
     }
 
     private var eventMonitor: Any?
+    private var eventMonitors: [Any] = []
 
     override var acceptsFirstResponder: Bool { true }
     override var canBecomeKeyView: Bool { true }
@@ -147,13 +148,39 @@ final class ShortcutRecorderControl: NSControl {
     }
 
     private func startMonitoring() {
-        print("Starting GLOBAL event monitor")
+        print("Starting event monitors")
         stopMonitoring()
 
-        // Use GLOBAL monitor to catch Command key combinations
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        // Check for Accessibility permissions
+        let trusted = AXIsProcessTrusted()
+        print("Accessibility trusted: \(trusted)")
+
+        if !trusted {
+            // Request permission
+            let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            AXIsProcessTrustedWithOptions(options)
+        }
+
+        // Use BOTH local and global monitors
+        // Local monitor catches non-Command shortcuts
+        let localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            print("Local monitor caught event: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
+            if self?.handleKeyEvent(event) == true {
+                return nil
+            }
+            return event
+        }
+
+        // Global monitor catches Command shortcuts (requires Accessibility permission)
+        let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             print("Global monitor caught event: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
             self?.handleKeyEvent(event)
+        }
+
+        // Store both monitors (we'll need to clean up both)
+        eventMonitor = localMonitor
+        if let globalMonitor = globalMonitor {
+            eventMonitors.append(globalMonitor)
         }
     }
 
@@ -161,8 +188,12 @@ final class ShortcutRecorderControl: NSControl {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
-            print("Event monitor stopped")
         }
+        for monitor in eventMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        eventMonitors.removeAll()
+        print("Event monitors stopped")
     }
 
     @discardableResult
