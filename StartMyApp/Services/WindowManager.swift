@@ -5,7 +5,7 @@ final class WindowManager {
 
     private init() {}
 
-    func showMainWindow() {
+    func showMainWindow(completion: (() -> Void)? = nil) {
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
 
@@ -22,8 +22,30 @@ final class WindowManager {
             if let window = mainWindow {
                 // Window exists, show it
                 print("Found existing main window: \(window.className)")
-                window.makeKeyAndOrderFront(nil)
+
+                // Make sure the window is visible and unhidden
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                }
+
+                // Bring window to front
                 window.orderFrontRegardless()
+
+                // Activate the app and make window key
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+
+                // Force window to be main
+                if !window.isKeyWindow {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        window.makeKey()
+                    }
+                }
+
+                // Give the window time to become key before calling completion
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    completion?()
+                }
             } else {
                 // No window found, try to create a new one using Cmd+N
                 print("No main window found, attempting to create new window")
@@ -60,6 +82,13 @@ final class WindowManager {
                     }) {
                         window.makeKeyAndOrderFront(nil)
                         window.orderFrontRegardless()
+
+                        // Give the window time to appear before calling completion
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            completion?()
+                        }
+                    } else {
+                        completion?()
                     }
                 }
             }

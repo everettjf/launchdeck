@@ -191,12 +191,22 @@ struct ContentView: View {
     }
 
 private func configure() {
+    print("ContentView configure - total apps: \(appState.totalAppCount)")
     searchText = appState.searchQuery
     focusCancellable = appState.searchFocusPublisher
         .receive(on: RunLoop.main)
         .sink { _ in
+            print("Search focus requested")
             isSearchFieldFocused = true
         }
+
+    // If no apps loaded, trigger a refresh
+    if appState.totalAppCount == 0 {
+        print("No apps found, triggering refresh")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            appState.refreshApps()
+        }
+    }
 }
 
 private var allApplicationsSection: some View {
