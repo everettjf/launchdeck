@@ -45,25 +45,11 @@ struct StartMyAppApp: App {
                 Divider()
                 Button("Clear Recent Launches", action: appState.clearRecents)
             }
-            CommandMenu("Focus") {
-                Button("Focus Search") {
-                    appState.postSearchFocusRequest()
-                }
-                .keyboardShortcut("f", modifiers: [.command])
-            }
             CommandMenu("Catalog") {
                 Button("Export Application Catalog…") {
                     appState.exportAppCatalog()
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
-            }
-            CommandMenu("Quick Access") {
-                Toggle("Show Menu Bar Icon", isOn: $preferences.showMenuBarIcon)
-                Toggle("Enable Global Shortcut", isOn: $preferences.isGlobalShortcutEnabled)
-                Button("Configure Shortcut…") {
-                    NSApp.presentSettings()
-                }
-                .keyboardShortcut(",", modifiers: [.command, .control])
             }
         }
         Settings {
