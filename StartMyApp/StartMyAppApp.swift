@@ -50,17 +50,49 @@ struct StartMyAppApp: App {
             }
 
             CommandGroup(replacing: .help) {
+                Button("Email Support") {
+                    sendSupportEmail()
+                }
                 Button("\(Bundle.main.appDisplayName) Help") {
                     if let url = URL(string: "https://startmy.app") {
                         NSWorkspace.shared.open(url)
                     }
                 }
-                .keyboardShortcut("?", modifiers: .command)
             }
         }
         Settings {
             SettingsView()
                 .environmentObject(preferences)
+        }
+    }
+
+    private func sendSupportEmail() {
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+
+        var deviceModel = "Unknown"
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        var model = [CChar](repeating: 0, count: size)
+        sysctlbyname("hw.model", &model, &size, nil, 0)
+        deviceModel = String(cString: model)
+
+        let subject = "Feedback-StartMyApp"
+        let body = """
+
+
+        ---
+        App Version: \(appVersion) (\(buildNumber))
+        macOS Version: \(osVersion)
+        Device Model: \(deviceModel)
+        """
+
+        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+
+        if let url = URL(string: "mailto:xnuapp@gmail.com?subject=\(encodedSubject)&body=\(encodedBody)") {
+            NSWorkspace.shared.open(url)
         }
     }
 }
