@@ -31,6 +31,15 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                Toggle(isOn: $preferences.showHiddenApps) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Show Hidden Applications")
+                        Text("Show apps that you've marked as hidden. Hidden apps can still be found via search.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Section("Appearance") {

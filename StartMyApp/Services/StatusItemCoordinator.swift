@@ -63,7 +63,7 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
     }
 
     private func refreshMenu() {
-        guard let statusItem else { return }
+        guard statusItem != nil else { return }
         let menu = NSMenu()
 
         menu.addItem(makeMenuItem(title: "Open StartMyApp", action: #selector(openMainWindow)))

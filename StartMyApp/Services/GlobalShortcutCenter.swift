@@ -14,7 +14,7 @@ final class GlobalShortcutCenter {
         unregister()
         callback = handler
 
-        var hotKeyID = EventHotKeyID(signature: "SMAP".fourCharCode, id: UInt32(1))
+        let hotKeyID = EventHotKeyID(signature: "SMAP".fourCharCode, id: UInt32(1))
         var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
                                       eventKind: UInt32(kEventHotKeyPressed))
 

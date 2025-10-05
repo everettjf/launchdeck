@@ -69,7 +69,7 @@ final class AppState: ObservableObject {
         let discoveryService = discoveryService
         weak var weakSelf = self
         Task.detached(priority: .userInitiated) {
-            let discovered = discoveryService.discoverApplications(showSystemApps: showSystemApps)
+            let discovered = await discoveryService.discoverApplications(showSystemApps: showSystemApps)
             await MainActor.run {
                 guard let appState = weakSelf else { return }
                 appState.handleDiscoveredApps(discovered)
@@ -133,6 +133,20 @@ final class AppState: ObservableObject {
 
     func isFavorite(_ app: DiscoveredApp) -> Bool {
         favorites.contains(app.identifier)
+    }
+
+    func hideApp(_ app: DiscoveredApp) {
+        preferences.hiddenApps.insert(app.identifier)
+        objectWillChange.send()
+    }
+
+    func unhideApp(_ app: DiscoveredApp) {
+        preferences.hiddenApps.remove(app.identifier)
+        objectWillChange.send()
+    }
+
+    func isHidden(_ app: DiscoveredApp) -> Bool {
+        preferences.hiddenApps.contains(app.identifier)
     }
 
     func launch(_ app: DiscoveredApp) {
@@ -266,18 +280,32 @@ final class AppState: ObservableObject {
     func favoriteApps() -> [DiscoveredApp] {
         orderedIdentifiers().compactMap { identifier in
             guard favorites.contains(identifier) else { return nil }
-            return appsByIdentifier[identifier]
+            guard let app = appsByIdentifier[identifier] else { return nil }
+            if !preferences.showHiddenApps && preferences.hiddenApps.contains(identifier) {
+                return nil
+            }
+            return app
         }
     }
 
     func recentApps() -> [DiscoveredApp] {
         recents.compactMap { launch in
-            appsByIdentifier[launch.identifier]
+            guard let app = appsByIdentifier[launch.identifier] else { return nil }
+            if !preferences.showHiddenApps && preferences.hiddenApps.contains(launch.identifier) {
+                return nil
+            }
+            return app
         }
     }
 
     func allApps() -> [DiscoveredApp] {
-        orderedIdentifiers().compactMap { appsByIdentifier[$0] }
+        orderedIdentifiers().compactMap { identifier in
+            guard let app = appsByIdentifier[identifier] else { return nil }
+            if !preferences.showHiddenApps && preferences.hiddenApps.contains(identifier) {
+                return nil
+            }
+            return app
+        }
     }
 
     func orderedCollections() -> [AppCollectionItem] {

@@ -99,6 +99,8 @@ final class AppPreferences: ObservableObject {
     @Published var showMenuBarIcon: Bool
     @Published var isGlobalShortcutEnabled: Bool
     @Published var globalShortcut: KeyboardShortcutPreference
+    @Published var hiddenApps: Set<String>
+    @Published var showHiddenApps: Bool
 
     private let defaults: UserDefaults
     fileprivate var cancellables = Set<AnyCancellable>()
@@ -111,6 +113,8 @@ final class AppPreferences: ObservableObject {
         static let showMenuBarIcon = "preferences.showMenuBarIcon"
         static let globalShortcutEnabled = "preferences.globalShortcutEnabled"
         static let globalShortcut = "preferences.globalShortcut"
+        static let hiddenApps = "preferences.hiddenApps"
+        static let showHiddenApps = "preferences.showHiddenApps"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -142,12 +146,24 @@ final class AppPreferences: ObservableObject {
         }
         isGlobalShortcutEnabled = defaults.bool(forKey: Keys.globalShortcutEnabled)
 
+        if let hiddenAppsArray = defaults.array(forKey: Keys.hiddenApps) as? [String] {
+            hiddenApps = Set(hiddenAppsArray)
+        } else {
+            hiddenApps = []
+        }
+
+        if defaults.object(forKey: Keys.showHiddenApps) == nil {
+            defaults.set(false, forKey: Keys.showHiddenApps)
+        }
+        showHiddenApps = defaults.bool(forKey: Keys.showHiddenApps)
+
         if let shortcutData = defaults.data(forKey: Keys.globalShortcut),
            let decoded = try? JSONDecoder().decode(KeyboardShortcutPreference.self, from: shortcutData) {
             globalShortcut = decoded
         } else {
-            globalShortcut = .default
-            if let data = try? JSONEncoder().encode(globalShortcut) {
+            let defaultShortcut = KeyboardShortcutPreference.default
+            globalShortcut = defaultShortcut
+            if let data = try? JSONEncoder().encode(defaultShortcut) {
                 defaults.set(data, forKey: Keys.globalShortcut)
             }
         }
@@ -210,6 +226,20 @@ final class AppPreferences: ObservableObject {
             .sink { [weak self] value in
                 guard let data = try? JSONEncoder().encode(value) else { return }
                 self?.defaults.set(data, forKey: Keys.globalShortcut)
+            }
+            .store(in: &cancellables)
+
+        $hiddenApps
+            .dropFirst()
+            .sink { [weak self] value in
+                self?.defaults.set(Array(value), forKey: Keys.hiddenApps)
+            }
+            .store(in: &cancellables)
+
+        $showHiddenApps
+            .dropFirst()
+            .sink { [weak self] value in
+                self?.defaults.set(value, forKey: Keys.showHiddenApps)
             }
             .store(in: &cancellables)
     }

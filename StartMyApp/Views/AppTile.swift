@@ -70,6 +70,14 @@ struct AppTile: View {
                 appState.toggleFavorite(for: app)
             }
             Divider()
+            Button(appState.isHidden(app) ? "Unhide" : "Hide") {
+                if appState.isHidden(app) {
+                    appState.unhideApp(app)
+                } else {
+                    appState.hideApp(app)
+                }
+            }
+            Divider()
             Button("Show in Finder") {
                 appState.revealInFinder(app)
             }
