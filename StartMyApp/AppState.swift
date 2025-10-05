@@ -537,7 +537,7 @@ final class AppState: ObservableObject {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HHmm"
         let timestamp = formatter.string(from: Date())
-        return "ApplicationCatalog_\(timestamp).json"
+        return "StartMyApp_Applications_\(timestamp).json"
     }
 
     nonisolated private func permissionsString(for path: String) -> String? {
@@ -625,6 +625,19 @@ private struct ExportedApp: Codable {
     let keywords: [String]
     let lastLaunch: Date?
     let launchCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case bundleIdentifier = "bundle_identifier"
+        case path
+        case category
+        case version
+        case developer
+        case isSystemApp = "is_system_app"
+        case keywords
+        case lastLaunch = "last_launch"
+        case launchCount = "launch_count"
+    }
 }
 
 struct AppInfoData: Identifiable {

@@ -44,12 +44,18 @@ struct StartMyAppApp: App {
                 }
                 Divider()
                 Button("Clear Recent Launches", action: appState.clearRecents)
-            }
-            CommandMenu("Catalog") {
-                Button("Export Application Catalog…") {
+                Button("Export Applications to JSON…") {
                     appState.exportAppCatalog()
                 }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
+
+            CommandGroup(replacing: .help) {
+                Button("\(Bundle.main.appDisplayName) Help") {
+                    if let url = URL(string: "https://startmy.app") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .keyboardShortcut("?", modifiers: .command)
             }
         }
         Settings {
