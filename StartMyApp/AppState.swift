@@ -497,35 +497,20 @@ final class AppState: ObservableObject {
 
     private func writeCatalog(to url: URL) async {
         let exportApps = apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        let recentsLookup = Dictionary(uniqueKeysWithValues: recents.map { ($0.identifier, $0) })
 
         let payload = exportApps.map { app -> ExportedApp in
-            let recent = recentsLookup[app.identifier]
             return ExportedApp(name: app.name,
                                bundleIdentifier: app.bundleIdentifier,
                                path: app.path,
                                category: app.category,
                                version: app.bundleVersion,
                                developer: app.developer,
-                               isSystemApp: app.isSystemApp,
-                               keywords: app.keywords.sorted(),
-                               lastLaunch: recent?.lastLaunch,
-                               launchCount: recent?.launchCount ?? 0)
+                               isSystemApp: app.isSystemApp)
         }
 
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            if #available(macOS 13.0, *) {
-                encoder.dateEncodingStrategy = .iso8601
-            } else {
-                encoder.dateEncodingStrategy = .custom { date, encoder in
-                    let formatter = ISO8601DateFormatter()
-                    let string = formatter.string(from: date)
-                    var container = encoder.singleValueContainer()
-                    try container.encode(string)
-                }
-            }
             let data = try encoder.encode(payload)
             try data.write(to: url, options: .atomic)
         } catch {
@@ -622,9 +607,6 @@ private struct ExportedApp: Codable {
     let version: String?
     let developer: String?
     let isSystemApp: Bool
-    let keywords: [String]
-    let lastLaunch: Date?
-    let launchCount: Int
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -634,9 +616,6 @@ private struct ExportedApp: Codable {
         case version
         case developer
         case isSystemApp = "is_system_app"
-        case keywords
-        case lastLaunch = "last_launch"
-        case launchCount = "launch_count"
     }
 }
 
