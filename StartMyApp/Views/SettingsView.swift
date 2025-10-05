@@ -5,109 +5,85 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("General") {
-                Toggle(isOn: preferences.showSystemAppsBinding) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Show System Applications")
-                        Text("Show built-in macOS apps from search results and collections.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+            Section {
+                Toggle("Show System Applications", isOn: preferences.showSystemAppsBinding)
 
                 Picker("Sort Order", selection: $preferences.sortOption) {
                     ForEach(AppPreferences.SortOption.allCases) { option in
                         Text(option.title).tag(option)
                     }
                 }
+            } header: {
+                Text("General")
+            } footer: {
+                Text("System apps include built-in macOS applications.")
+                    .font(.caption)
             }
 
-            Section("Collections") {
-                Toggle(isOn: $preferences.showRecentApps) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Show Recent Launches")
-                        Text("Controls whether the Recently Launched section appears on the home screen.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Toggle(isOn: $preferences.showHiddenApps) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Show Hidden Applications")
-                        Text("Show apps that you've marked as hidden. Hidden apps can still be found via search.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+            Section {
+                Toggle("Show Recent Launches", isOn: $preferences.showRecentApps)
+                Toggle("Show Hidden Applications", isOn: $preferences.showHiddenApps)
+            } header: {
+                Text("Collections")
+            } footer: {
+                Text("Hidden apps can still be found via search.")
+                    .font(.caption)
             }
 
-            Section("Appearance") {
-                Picker("Tile Size", selection: $preferences.gridScale) {
-                    ForEach(AppPreferences.GridScale.allCases, id: \.self) { scale in
-                        Text(scale.title).tag(scale)
-                    }
-                }
-                .pickerStyle(.segmented)
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Tile Size")
+                        .font(.subheadline.weight(.medium))
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Preview")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 16) {
+                    Picker("", selection: $preferences.gridScale) {
                         ForEach(AppPreferences.GridScale.allCases, id: \.self) { scale in
-                            VStack(spacing: 6) {
-                                RoundedRectangle(cornerRadius: scale.iconSize * 0.24, style: .continuous)
-                                    .fill(scale == preferences.gridScale ? Color.accentColor.opacity(0.65) : Color.secondary.opacity(0.25))
-                                    .frame(width: scale.iconSize, height: scale.iconSize)
-                                Text(scale.title)
-                                    .font(.system(size: 11))
-                            }
-                            .padding(8)
-                            .frame(width: scale.minimumTileWidth)
-                            .background(scale == preferences.gridScale ? Color.accentColor.opacity(0.08) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            Text(scale.title).tag(scale)
                         }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    HStack(spacing: 20) {
+                        ForEach(AppPreferences.GridScale.allCases, id: \.self) { scale in
+                            VStack(spacing: 8) {
+                                RoundedRectangle(cornerRadius: scale.iconSize * 0.24, style: .continuous)
+                                    .fill(scale == preferences.gridScale ? Color.accentColor : Color.secondary.opacity(0.3))
+                                    .frame(width: scale.iconSize, height: scale.iconSize)
+                                Text(scale.title)
+                                    .font(.caption)
+                                    .foregroundStyle(scale == preferences.gridScale ? .primary : .secondary)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
                 }
-                .padding(.top, 6)
+            } header: {
+                Text("Appearance")
             }
 
-            Section("Quick Access") {
-                Toggle(isOn: $preferences.showMenuBarIcon) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Show Menu Bar Icon")
-                        Text("Provides quick access from the menu bar to launch the app and toggle key settings.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+            Section {
+                Toggle("Show Menu Bar Icon", isOn: $preferences.showMenuBarIcon)
 
-                Toggle(isOn: $preferences.isGlobalShortcutEnabled) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Enable Global Shortcut")
-                        Text("Use a keyboard shortcut to bring StartMyApp to the front and focus search.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Toggle("Enable Global Shortcut", isOn: $preferences.isGlobalShortcutEnabled)
 
                 if preferences.isGlobalShortcutEnabled {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Shortcut")
+                    VStack(alignment: .leading, spacing: 8) {
+                        ShortcutRecorderView(shortcut: $preferences.globalShortcut)
+                        Text("Press Escape to cancel. Requires at least one modifier key.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        ShortcutRecorderView(shortcut: $preferences.globalShortcut)
-                        Text("Press Escape to cancel while recording. At least one modifier key is required.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
                     }
-                    .padding(.top, 4)
                 }
+            } header: {
+                Text("Quick Access")
+            } footer: {
+                Text("Use the global shortcut to quickly open StartMyApp from anywhere.")
+                    .font(.caption)
             }
         }
-        .padding(24)
-        .frame(width: 420)
+        .formStyle(.grouped)
+        .frame(width: 500)
     }
 }
 
