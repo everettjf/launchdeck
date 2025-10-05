@@ -309,12 +309,39 @@ final class AppState: ObservableObject {
     }
 
     func orderedCollections() -> [AppCollectionItem] {
+        let collections: [AppCollectionItem]
         switch preferences.sortOption {
         case .custom:
-            return layout
+            collections = layout
         case .alphabetical, .mostLaunched, .recentlyLaunched:
             let identifiers = sortedAppIdentifiers(for: preferences.sortOption)
-            return identifiers.map { AppCollectionItem.app($0) }
+            collections = identifiers.map { AppCollectionItem.app($0) }
+        }
+
+        // Filter hidden apps if showHiddenApps is false
+        if preferences.showHiddenApps {
+            return collections
+        } else {
+            return collections.compactMap { item in
+                switch item.kind {
+                case .app:
+                    guard let identifier = item.appIdentifier else { return nil }
+                    if preferences.hiddenApps.contains(identifier) {
+                        return nil
+                    }
+                    return item
+                case .folder:
+                    guard var folder = item.folder else { return nil }
+                    // Filter hidden apps from folder
+                    folder.appIdentifiers = folder.appIdentifiers.filter { !preferences.hiddenApps.contains($0) }
+                    if folder.appIdentifiers.isEmpty {
+                        return nil
+                    }
+                    var filteredItem = item
+                    filteredItem.folder = folder
+                    return filteredItem
+                }
+            }
         }
     }
 
