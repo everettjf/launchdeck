@@ -29,7 +29,7 @@ struct AppTile: View {
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, 2)
                         .frame(maxWidth: .infinity)
                         .frame(height: titleHeight, alignment: .top)
                         .help(app.name)

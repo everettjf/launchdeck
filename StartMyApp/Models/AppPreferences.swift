@@ -25,9 +25,9 @@ final class AppPreferences: ObservableObject {
 
         var labelFontSize: CGFloat {
             switch self {
-            case .compact: return 11
-            case .comfortable: return 12.5
-            case .spacious: return 14.5
+            case .compact: return 10
+            case .comfortable: return 11
+            case .spacious: return 12.5
             }
         }
 
