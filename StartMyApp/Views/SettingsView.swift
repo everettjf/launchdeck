@@ -13,20 +13,12 @@ struct SettingsView: View {
                         Text(option.title).tag(option)
                     }
                 }
-            } header: {
-                Text("General")
-            } footer: {
-                Text("System apps include built-in macOS applications.")
-                    .font(.caption)
-            }
-
-            Section {
                 Toggle("Show Recent Launches", isOn: $preferences.showRecentApps)
                 Toggle("Show Hidden Applications", isOn: $preferences.showHiddenApps)
             } header: {
-                Text("Collections")
+                Text("General")
             } footer: {
-                Text("Hidden apps can still be found via search.")
+                Text("System apps include built-in macOS applications. Hidden apps can still be found via search.")
                     .font(.caption)
             }
 
@@ -35,24 +27,21 @@ struct SettingsView: View {
                     Text("Tile Size")
                         .font(.subheadline.weight(.medium))
 
-                    Picker("", selection: $preferences.gridScale) {
-                        ForEach(AppPreferences.GridScale.allCases, id: \.self) { scale in
-                            Text(scale.title).tag(scale)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-
                     HStack(spacing: 20) {
                         ForEach(AppPreferences.GridScale.allCases, id: \.self) { scale in
-                            VStack(spacing: 8) {
-                                RoundedRectangle(cornerRadius: scale.iconSize * 0.24, style: .continuous)
-                                    .fill(scale == preferences.gridScale ? Color.accentColor : Color.secondary.opacity(0.3))
-                                    .frame(width: scale.iconSize, height: scale.iconSize)
-                                Text(scale.title)
-                                    .font(.caption)
-                                    .foregroundStyle(scale == preferences.gridScale ? .primary : .secondary)
+                            Button {
+                                preferences.gridScale = scale
+                            } label: {
+                                VStack(spacing: 8) {
+                                    RoundedRectangle(cornerRadius: scale.iconSize * 0.24, style: .continuous)
+                                        .fill(scale == preferences.gridScale ? Color.accentColor : Color.secondary.opacity(0.3))
+                                        .frame(width: scale.iconSize, height: scale.iconSize)
+                                    Text(scale.title)
+                                        .font(.caption)
+                                        .foregroundStyle(scale == preferences.gridScale ? .primary : .secondary)
+                                }
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -83,7 +72,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 500)
+        .frame(width: 500, height: 600)
     }
 }
 
