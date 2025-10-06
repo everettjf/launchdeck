@@ -13,7 +13,12 @@ struct ContentView: View {
     @State private var newFolderName: String = ""
 
     private var searchResults: [DiscoveredApp] {
-        appState.appsMatchingSearch()
+        // Use semantic results if they exist
+        if !appState.semanticSearchResults.isEmpty {
+            return appState.semanticSearchResults
+        }
+        // Otherwise use keyword results
+        return appState.appsMatchingSearch()
     }
 
     private var favoriteApps: [DiscoveredApp] {
@@ -42,6 +47,8 @@ struct ContentView: View {
         .onChange(of: searchText) { _, newValue in
             if appState.searchQuery != newValue {
                 appState.searchQuery = newValue
+                // Handle semantic search state based on input
+                appState.handleSearchQueryChange(newValue)
             }
         }
         .onReceive(appState.$searchQuery.removeDuplicates()) { incoming in
@@ -79,17 +86,33 @@ struct ContentView: View {
                         }
                         allApplicationsSection
                     } else {
-                        if searchResults.isEmpty {
+                        if appState.isSemanticSearching {
+                            // Show loading indicator for semantic search
+                            VStack(spacing: 16) {
+                                ProgressView()
+                                    .scaleEffect(1.2)
+                                VStack(spacing: 8) {
+                                    Text("Searching with AI...")
+                                        .font(.title3.weight(.semibold))
+                                    Text("Using Apple Foundation Models to find matching apps")
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                            }
+                            .padding(.top, 48)
+                            .frame(maxWidth: .infinity)
+                        } else if searchResults.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("No results")
                                     .font(.title3.weight(.semibold))
-                                Text("Try searching by category, developer, or bundle identifier.")
+                                Text(noResultsMessage)
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.top, 32)
                         } else {
-                            AppGridSection(title: "Search",
+                            AppGridSection(title: searchSectionTitle,
                                             apps: searchResults) {
                                 Text(searchSubtitle(for: searchResults.count))
                                     .font(.callout)
@@ -206,7 +229,7 @@ struct ContentView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("Search apps, categories, or developers", text: $searchText)
+            TextField(searchPlaceholder, text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 16, weight: .medium))
                 .focused($isSearchFieldFocused)
@@ -234,6 +257,27 @@ struct ContentView: View {
                 .stroke(isSearchFieldFocused ? Color.accentColor.opacity(0.6) : Color.white.opacity(0.12), lineWidth: 1.2)
         )
         .shadow(color: Color.black.opacity(isSearchFieldFocused ? 0.2 : 0.08), radius: isSearchFieldFocused ? 10 : 5, x: 0, y: 4)
+    }
+
+    private var searchSectionTitle: String {
+        if !appState.semanticSearchResults.isEmpty {
+            return "AI Search Results"
+        }
+        return "Search"
+    }
+
+    private var searchPlaceholder: String {
+        if appState.isSemanticSearchAvailable {
+            return "Search apps (use / for AI search)"
+        }
+        return "Search apps, categories, or developers"
+    }
+
+    private var noResultsMessage: String {
+        if appState.isSemanticSearchAvailable {
+            return "Try searching by category, developer, or bundle identifier. Or start with '/' to use AI search."
+        }
+        return "Try searching by category, developer, or bundle identifier."
     }
 
     private func searchSubtitle(for count: Int) -> String {

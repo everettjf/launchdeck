@@ -12,8 +12,12 @@ final class AppState: ObservableObject {
     @Published private(set) var favorites: Set<String>
     @Published private(set) var recents: [RecentLaunch]
     @Published var presentedAppInfo: AppInfoData?
+    @Published private(set) var isSemanticSearching: Bool = false
 
     var totalAppCount: Int { apps.count }
+    var isSemanticSearchAvailable: Bool {
+        return semanticSearchService != nil
+    }
 
     private let favoritesStore: FavoritesStore
     private let recentsStore: RecentsStore
@@ -21,9 +25,12 @@ final class AppState: ObservableObject {
     private let layoutStore: LayoutStore
     private let preferences: AppPreferences
     private let focusPublisher = PassthroughSubject<Void, Never>()
+    private var semanticSearchService: Any? // SemanticSearchService for macOS 26+
 
     private var appsByIdentifier: [String: DiscoveredApp] = [:]
     private var cancellables = Set<AnyCancellable>()
+    private var semanticSearchTask: Task<Void, Never>?
+    private var debounceTimer: Timer?
 
     var searchFocusPublisher: AnyPublisher<Void, Never> {
         focusPublisher.eraseToAnyPublisher()
@@ -49,6 +56,16 @@ final class AppState: ObservableObject {
 
         setupBindings()
         refreshApps()
+        initializeSemanticSearch()
+    }
+
+    private func initializeSemanticSearch() {
+        Task {
+            let service = await SemanticSearchService()
+            await MainActor.run {
+                self.semanticSearchService = service
+            }
+        }
     }
 
     private func setupBindings() {
@@ -270,11 +287,155 @@ final class AppState: ObservableObject {
         presentedAppInfo = nil
     }
 
+    // Called when search query changes - handles semantic search state
+    func handleSearchQueryChange(_ query: String) {
+        print("\n📝 Search query changed to: '\(query)'")
+
+        // Cancel any pending debounce timer
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+
+        // 1. If search is empty, clear AI results
+        guard !query.isEmpty else {
+            print("   ↳ Query is empty, clearing semantic search")
+            clearSemanticSearch()
+            return
+        }
+
+        // 2. Check if using AI search (starts with /)
+        let useAISearch = query.hasPrefix("/")
+        let actualQuery = useAISearch ? String(query.dropFirst()) : query
+
+        // 3. If not using AI search, clear AI results
+        if !useAISearch {
+            print("   ↳ Not using AI search, clearing semantic results")
+            clearSemanticSearch()
+            return
+        }
+
+        // 4. If only "/" is entered (no actual query), clear AI results
+        if actualQuery.isEmpty {
+            print("   ↳ Only '/' entered, clearing semantic results")
+            clearSemanticSearch()
+            return
+        }
+
+        // 5. If using AI search (/xxx), trigger semantic search with debounce
+        if isSemanticSearchAvailable, !actualQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+            print("   ↳ AI search mode - debouncing for 2 seconds...")
+            print("   ↳ Query to search: '\(actualQuery)'")
+
+            // Debounce: wait 2 seconds before triggering AI search
+            debounceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                print("\n⏰ Debounce timer fired! Triggering AI search for: '\(actualQuery)'")
+                Task { @MainActor in
+                    self.triggerSemanticSearch(query: actualQuery)
+                }
+            }
+        }
+    }
+
     func appsMatchingSearch() -> [DiscoveredApp] {
-        guard !searchQuery.isEmpty else { return allApps() }
-        let term = searchQuery.lowercased()
+        // This is now a pure function without side effects
+        guard !searchQuery.isEmpty else {
+            return allApps()
+        }
+
+        // Check if using AI search
+        let useAISearch = searchQuery.hasPrefix("/")
+        let actualQuery = useAISearch ? String(searchQuery.dropFirst()) : searchQuery
+
+        // If only "/" is entered, return empty
+        if useAISearch && actualQuery.isEmpty {
+            return []
+        }
+
+        // If using AI search, return empty (results come from semanticSearchResults)
+        if useAISearch {
+            return []
+        }
+
+        // Otherwise, use keyword-based search
+        let term = actualQuery.lowercased()
         let matches = apps.filter { $0.searchableText.contains(term) }
         return matches.sorted { searchRank(for: $0) > searchRank(for: $1) }
+    }
+
+    private func clearSemanticSearch() {
+        print("   🧹 Clearing semantic search")
+
+        // Cancel any debounce timer
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+
+        // Cancel any ongoing search task
+        semanticSearchTask?.cancel()
+
+        // Clear the searching state
+        if isSemanticSearching {
+            print("   ↳ Stopping search in progress")
+            isSemanticSearching = false
+        }
+
+        // Clear results
+        if !semanticSearchResults.isEmpty {
+            print("   ↳ Clearing \(semanticSearchResults.count) previous results")
+            semanticSearchResults = []
+        }
+    }
+
+    private func triggerSemanticSearch(query: String) {
+        print("\n🚀 Triggering semantic search for: '\(query)'")
+
+        // Cancel any ongoing search
+        semanticSearchTask?.cancel()
+
+        isSemanticSearching = true
+        print("   ↳ Setting isSemanticSearching = true")
+
+        semanticSearchTask = Task { @MainActor in
+            guard let service = semanticSearchService as? SemanticSearchService else {
+                print("   ❌ Semantic search service not available")
+                isSemanticSearching = false
+                return
+            }
+
+            print("   ⏳ Calling AI service...")
+            let results = await service.searchApps(apps, query: query)
+
+            // Check if search query hasn't changed
+            let currentQuery = self.searchQuery.hasPrefix("/")
+                ? String(self.searchQuery.dropFirst())
+                : self.searchQuery
+
+            print("   📊 Got \(results.count) results from AI")
+            print("   🔍 Current query: '\(currentQuery)', Search query: '\(query)'")
+
+            if currentQuery == query && !Task.isCancelled {
+                print("   ✅ Query matches, updating results")
+                self.updateSemanticResults(results.map { $0.app })
+            } else {
+                print("   ⚠️ Query changed or task cancelled, discarding results")
+            }
+
+            isSemanticSearching = false
+            print("   ↳ Setting isSemanticSearching = false")
+        }
+    }
+
+    @Published private(set) var semanticSearchResults: [DiscoveredApp] = []
+
+    private func updateSemanticResults(_ results: [DiscoveredApp]) {
+        print("   💾 Updating semantic results: \(results.count) apps")
+        for (index, app) in results.prefix(5).enumerated() {
+            print("      \(index + 1). \(app.name)")
+        }
+        if results.count > 5 {
+            print("      ... and \(results.count - 5) more")
+        }
+        semanticSearchResults = results
+        objectWillChange.send()
     }
 
     func favoriteApps() -> [DiscoveredApp] {
