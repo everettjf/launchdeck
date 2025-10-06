@@ -6,6 +6,7 @@ struct AppTile: View {
 
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var preferences: AppPreferences
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var icon: NSImage?
     @State private var isHovering = false
@@ -121,7 +122,11 @@ struct AppTile: View {
         if isReorderTarget {
             return Color.accentColor.opacity(0.24)
         }
-        return Color.black.opacity(isHovering ? 0.18 : 0.08)
+        if colorScheme == .dark {
+            return Color.black.opacity(isHovering ? 0.18 : 0.08)
+        } else {
+            return Color.black.opacity(isHovering ? 0.12 : 0.06)
+        }
     }
 
     private var shadowRadius: CGFloat {
@@ -139,7 +144,12 @@ struct AppTile: View {
     private var borderColor: Color {
         if isDropTarget { return Color.accentColor }
         if isReorderTarget { return Color.accentColor.opacity(0.75) }
-        return Color.white.opacity(isHovering ? 0.35 : 0.12)
+
+        if colorScheme == .dark {
+            return Color.white.opacity(isHovering ? 0.35 : 0.12)
+        } else {
+            return Color.black.opacity(isHovering ? 0.20 : 0.08)
+        }
     }
 
     private var borderWidth: CGFloat {
@@ -155,7 +165,12 @@ struct AppTile: View {
         if isReorderTarget {
             return Color.accentColor.opacity(0.18)
         }
-        return Color.white.opacity(isHovering ? 0.18 : 0.1)
+
+        if colorScheme == .dark {
+            return Color.white.opacity(isHovering ? 0.18 : 0.1)
+        } else {
+            return Color.black.opacity(isHovering ? 0.06 : 0.03)
+        }
     }
 
     private var scaleFactor: CGFloat {
