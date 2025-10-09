@@ -31,6 +31,7 @@ final class AppState: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var semanticSearchTask: Task<Void, Never>?
     private var debounceTimer: Timer?
+    private var directoryMonitor: ApplicationDirectoryMonitor?
 
     var searchFocusPublisher: AnyPublisher<Void, Never> {
         focusPublisher.eraseToAnyPublisher()
@@ -55,6 +56,7 @@ final class AppState: ObservableObject {
         self.layout = layoutStore.load()
 
         setupBindings()
+        setupDirectoryMonitoring()
         refreshApps()
         initializeSemanticSearch()
     }
@@ -75,6 +77,15 @@ final class AppState: ObservableObject {
                 self?.refreshApps(showSystemApps: newValue)
             }
             .store(in: &cancellables)
+    }
+
+    private func setupDirectoryMonitoring() {
+        directoryMonitor = ApplicationDirectoryMonitor { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.refreshApps()
+            }
+        }
+        directoryMonitor?.startMonitoring()
     }
 
     func refreshApps() {
