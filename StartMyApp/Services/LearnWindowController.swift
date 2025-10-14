@@ -11,11 +11,11 @@ final class LearnWindowController: NSWindowController {
         let controller = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: controller)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(NSSize(width: 700, height: 500))
-        window.minSize = NSSize(width: 600, height: 400)
+        window.setContentSize(NSSize(width: 600, height: 800))
+        window.minSize = NSSize(width: 500, height: 500)
         window.level = .normal
         window.center()
-        window.title = "Learn"
+        window.title = "App Info"
         window.isReleasedWhenClosed = false
         super.init(window: window)
     }
@@ -31,7 +31,7 @@ final class LearnWindowController: NSWindowController {
         let view = LearnView(app: app)
         let controller = NSHostingController(rootView: view)
         window?.contentViewController = controller
-        window?.title = "Learn - \(app.name)"
+        window?.title = "App Info - \(app.name)"
 
         guard let window else { return }
         NSApp.activate(ignoringOtherApps: true)
