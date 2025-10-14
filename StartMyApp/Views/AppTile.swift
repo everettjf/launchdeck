@@ -88,9 +88,6 @@ struct AppTile: View {
             Button("App Info") {
                 appState.presentAppInfo(for: app)
             }
-            Button("Learn") {
-                appState.presentLearn(for: app)
-            }
             if let folderID {
                 Divider()
                 Button("Remove from Folder") {

@@ -266,27 +266,7 @@ final class AppState: ObservableObject {
     }
 
     func presentAppInfo(for app: DiscoveredApp) {
-        Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self else { return }
-            let fileURL = URL(fileURLWithPath: app.path)
-            let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
-            let info = AppInfoData(app: app,
-                                   bundleSize: attributes.flatMap { attrs in
-                                       guard let size = attrs[.size] as? NSNumber else { return nil }
-                                       let formatter = ByteCountFormatter()
-                                       formatter.allowedUnits = [.useMB, .useGB]
-                                       formatter.countStyle = .file
-                                       return formatter.string(fromByteCount: size.int64Value)
-                                   },
-                                   created: attributes?[.creationDate] as? Date,
-                                   modified: attributes?[.modificationDate] as? Date,
-                                   permissions: permissionsString(for: fileURL.path))
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.12)) {
-                    self.presentedAppInfo = info
-                }
-            }
-        }
+        LearnWindowController.shared.show(for: app)
     }
 
     func copyDetails(of info: AppInfoData) {
@@ -296,10 +276,6 @@ final class AppState: ObservableObject {
 
     func dismissAppInfo() {
         presentedAppInfo = nil
-    }
-
-    func presentLearn(for app: DiscoveredApp) {
-        LearnWindowController.shared.show(for: app)
     }
 
     // Called when search query changes - handles semantic search state
