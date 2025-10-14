@@ -298,6 +298,10 @@ final class AppState: ObservableObject {
         presentedAppInfo = nil
     }
 
+    func presentLearn(for app: DiscoveredApp) {
+        LearnWindowController.shared.show(for: app)
+    }
+
     // Called when search query changes - handles semantic search state
     func handleSearchQueryChange(_ query: String) {
         print("\n📝 Search query changed to: '\(query)'")
