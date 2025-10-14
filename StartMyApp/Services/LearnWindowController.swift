@@ -11,8 +11,8 @@ final class LearnWindowController: NSWindowController {
         let controller = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: controller)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(NSSize(width: 600, height: 800))
-        window.minSize = NSSize(width: 500, height: 500)
+        window.setContentSize(NSSize(width: 600, height: 750))
+        window.minSize = NSSize(width: 400, height: 400)
         window.level = .normal
         window.center()
         window.title = "App Info"
@@ -34,6 +34,11 @@ final class LearnWindowController: NSWindowController {
         window?.title = "App Info - \(app.name)"
 
         guard let window else { return }
+
+        // Set window size each time it's shown
+        window.setContentSize(NSSize(width: 600, height: 750))
+        window.center()
+
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
