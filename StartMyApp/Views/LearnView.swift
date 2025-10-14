@@ -1,6 +1,34 @@
 import SwiftUI
 import AppKit
 
+
+
+class LearnUtils {
+    
+    public static func searchOnGoogle(_ query: String) {
+        let searchQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        if let url = URL(string: "https://www.google.com/search?q=\(searchQuery)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    public static func searchOnBing(_ query: String) {
+        let searchQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        if let url = URL(string: "https://www.bing.com/search?q=\(searchQuery)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    public static func searchOnDuckDuckGo(_ query: String) {
+        let searchQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        if let url = URL(string: "https://duckduckgo.com/?q=\(searchQuery)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+
+
 struct LearnView: View {
     let app: DiscoveredApp?
     @State private var selectedTab = 0
@@ -469,7 +497,7 @@ struct FrameworkRow: View {
 
             // Search icon (appears on hover)
             if isHovering {
-                Button(action: { searchOnGoogle(framework.displayName) }) {
+                Button(action: { LearnUtils.searchOnGoogle(framework.displayName) }) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
@@ -491,19 +519,17 @@ struct FrameworkRow: View {
             }
         }
         .onTapGesture {
-            searchOnGoogle(framework.displayName)
+            LearnUtils.searchOnGoogle(framework.name)
         }
         .contextMenu {
-            Menu("Search with") {
-                Button("Google") {
-                    searchOnGoogle(framework.displayName)
-                }
-                Button("Bing") {
-                    searchOnBing(framework.displayName)
-                }
-                Button("DuckDuckGo") {
-                    searchOnDuckDuckGo(framework.displayName)
-                }
+            Button("Search with Google") {
+                LearnUtils.searchOnGoogle(framework.name)
+            }
+            Button("Search with Bing") {
+                LearnUtils.searchOnBing(framework.name)
+            }
+            Button("Search with DuckDuckGo") {
+                LearnUtils.searchOnDuckDuckGo(framework.name)
             }
             Divider()
             Button("Reveal in Finder") {
@@ -523,26 +549,6 @@ struct FrameworkRow: View {
                   : Color.clear)
     }
 
-    private func searchOnGoogle(_ query: String) {
-        let searchQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        if let url = URL(string: "https://www.google.com/search?q=\(searchQuery)") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    private func searchOnBing(_ query: String) {
-        let searchQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        if let url = URL(string: "https://www.bing.com/search?q=\(searchQuery)") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    private func searchOnDuckDuckGo(_ query: String) {
-        let searchQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        if let url = URL(string: "https://duckduckgo.com/?q=\(searchQuery)") {
-            NSWorkspace.shared.open(url)
-        }
-    }
 }
 
 // MARK: - Resource Item
@@ -653,16 +659,30 @@ struct ResourceRow: View {
             openResource()
         }
         .contextMenu {
+            
             Button("Open") {
                 openResource()
             }
             Divider()
+            
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: resource.path)])
             }
             Button("Copy Path") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(resource.path, forType: .string)
+            }
+            
+            Divider()
+        
+            Button("Search with Google") {
+                LearnUtils.searchOnGoogle(resource.name)
+            }
+            Button("Search with Bing") {
+                LearnUtils.searchOnBing(resource.name)
+            }
+            Button("Search with DuckDuckGo") {
+                LearnUtils.searchOnDuckDuckGo(resource.name)
             }
         }
     }
@@ -677,6 +697,8 @@ struct ResourceRow: View {
     private func openResource() {
         NSWorkspace.shared.open(URL(fileURLWithPath: resource.path))
     }
+    
+    
 }
 
 // MARK: - FlowLayout for Keywords

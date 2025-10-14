@@ -190,16 +190,12 @@ actor SemanticSearchService {
         Score:
         """
 
-        do {
-            let content = try await FoundationModels.GeneratedContent(prompt)
-            let text = content.jsonString
-            let trimmed = text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        let content = FoundationModels.GeneratedContent(prompt)
+        let text = content.jsonString
+        let trimmed = text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
-            if let score = Double(trimmed) {
-                return max(0.0, min(1.0, score))
-            }
-        } catch {
-            print("Foundation Models error: \(error)")
+        if let score = Double(trimmed) {
+            return max(0.0, min(1.0, score))
         }
 
         return 0.0
