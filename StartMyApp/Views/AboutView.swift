@@ -41,6 +41,8 @@ struct AboutView: View {
             Text(copyright)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            Link("More Apps", destination: URL(string: "https://xnu.app")!)
         }
         .padding(32)
         .frame(width: 360)

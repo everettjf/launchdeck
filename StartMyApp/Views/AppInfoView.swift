@@ -105,7 +105,6 @@ struct AppInfoView: View {
                             isSystemApp: false,
                             keywords: ["Preview", "Example"])
     let info = AppInfoData(app: app,
-                           bundleSize: "12.5 MB",
                            created: Date(),
                            modified: Date(),
                            permissions: "Read/Execute")

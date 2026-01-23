@@ -148,9 +148,6 @@ struct LearnView: View {
                         infoSection(title: "File Information") {
                             VStack(spacing: 12) {
                                 infoRow(label: "Path", value: info.app.path, isPath: true)
-                                if let bundleSize = info.bundleSize {
-                                    infoRow(label: "Bundle Size", value: bundleSize)
-                                }
                                 if let created = info.created {
                                     infoRow(label: "Created", value: formatDate(created))
                                 }
@@ -387,13 +384,6 @@ struct LearnView: View {
 
         return AppInfoData(
             app: app,
-            bundleSize: attributes.flatMap { attrs in
-                guard let size = attrs[.size] as? NSNumber else { return nil }
-                let formatter = ByteCountFormatter()
-                formatter.allowedUnits = [.useMB, .useGB]
-                formatter.countStyle = .file
-                return formatter.string(fromByteCount: size.int64Value)
-            },
             created: attributes?[.creationDate] as? Date,
             modified: attributes?[.modificationDate] as? Date,
             permissions: permissionsString(for: fileURL.path)

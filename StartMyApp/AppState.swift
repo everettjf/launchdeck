@@ -773,7 +773,6 @@ private struct ExportedApp: Codable {
 
 struct AppInfoData: Identifiable {
     let app: DiscoveredApp
-    let bundleSize: String?
     let created: Date?
     let modified: Date?
     let permissions: String?
@@ -797,9 +796,6 @@ struct AppInfoData: Identifiable {
         }
         lines.append("System Application: \(app.isSystemApp ? "Yes" : "No")")
         lines.append("Path: \(app.path)")
-        if let bundleSize {
-            lines.append("Bundle Size: \(bundleSize)")
-        }
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
