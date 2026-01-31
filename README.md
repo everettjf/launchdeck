@@ -8,7 +8,7 @@ A modern macOS app launcher focused on fast discovery, organization, and launch.
 
 ## Screenshot
 
-![StartMyApp Screenshot](docs/screenshots/main.png)
+![StartMyApp Screenshot](screenshot.png)
 
 ## Highlights
 
