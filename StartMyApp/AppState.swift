@@ -80,9 +80,9 @@ final class AppState: ObservableObject {
     }
 
     private func setupDirectoryMonitoring() {
-        directoryMonitor = ApplicationDirectoryMonitor { [weak self] in
+        directoryMonitor = ApplicationDirectoryMonitor { [weak self] changedPaths in
             Task { @MainActor [weak self] in
-                self?.refreshApps()
+                self?.refreshApps(changedPaths: changedPaths)
             }
         }
         directoryMonitor?.startMonitoring()
@@ -90,6 +90,21 @@ final class AppState: ObservableObject {
 
     func refreshApps() {
         refreshApps(showSystemApps: preferences.showSystemApps)
+    }
+
+    private func refreshApps(changedPaths: [String]) {
+        let discoveryService = discoveryService
+        let showSystemApps = preferences.showSystemApps
+        weak var weakSelf = self
+        Task.detached(priority: .userInitiated) {
+            let discovered = discoveryService.refreshApplications(
+                changedPaths: changedPaths,
+                showSystemApps: showSystemApps
+            )
+            await MainActor.run {
+                weakSelf?.handleDiscoveredApps(discovered)
+            }
+        }
     }
 
     private func refreshApps(showSystemApps: Bool) {

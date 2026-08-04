@@ -1,11 +1,22 @@
 import Foundation
 
-final class ApplicationDiscoveryService {
+public final class ApplicationDiscoveryService {
     private let fileManager: FileManager
     private let searchPaths: [URL]
+    private let lock = NSLock()
+    private var cachedAppsByPath: [String: CachedApp] = [:]
 
-    init(fileManager: FileManager = .default) {
+    private struct CachedApp {
+        let modificationDate: Date?
+        let app: DiscoveredApp
+    }
+
+    public init(fileManager: FileManager = .default, searchPaths: [URL]? = nil) {
         self.fileManager = fileManager
+        if let searchPaths {
+            self.searchPaths = searchPaths
+            return
+        }
         var paths: [URL] = [
             URL(fileURLWithPath: "/Applications", isDirectory: true),
             URL(fileURLWithPath: "/Applications/Utilities", isDirectory: true),
@@ -27,9 +38,12 @@ final class ApplicationDiscoveryService {
         self.searchPaths = paths
     }
 
-    func discoverApplications(showSystemApps: Bool) -> [DiscoveredApp] {
+    public func discoverApplications(showSystemApps: Bool) -> [DiscoveredApp] {
+        lock.lock()
+        defer { lock.unlock() }
         print("discover applications with : \(showSystemApps ? "include system apps" : "exclude system apps")")
         var applications: [String: DiscoveredApp] = [:]
+        var discoveredPaths = Set<String>()
 
         for baseURL in searchPaths {
             guard let enumerator = fileManager.enumerator(at: baseURL,
@@ -44,8 +58,9 @@ final class ApplicationDiscoveryService {
                 }
 
                 enumerator.skipDescendants()
+                discoveredPaths.insert(Self.canonicalPath(for: url))
 
-                guard let app = makeApp(from: url) else { continue }
+                guard let app = cachedApp(from: url) else { continue }
                 if !showSystemApps && app.isSystemApp {
                     continue
                 }
@@ -56,7 +71,62 @@ final class ApplicationDiscoveryService {
             }
         }
 
+        cachedAppsByPath = cachedAppsByPath.filter { discoveredPaths.contains($0.key) }
+
         return Array(applications.values)
+    }
+
+    public func refreshApplications(changedPaths: [String], showSystemApps: Bool) -> [DiscoveredApp] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !cachedAppsByPath.isEmpty else {
+            lock.unlock()
+            let result = discoverApplications(showSystemApps: showSystemApps)
+            lock.lock()
+            return result
+        }
+
+        for path in Set(changedPaths.compactMap(Self.applicationBundlePath(from:))) {
+            let url = URL(fileURLWithPath: path, isDirectory: true)
+            let cacheKey = Self.canonicalPath(for: url)
+            guard fileManager.fileExists(atPath: cacheKey) else {
+                cachedAppsByPath.removeValue(forKey: cacheKey)
+                continue
+            }
+            cachedAppsByPath.removeValue(forKey: cacheKey)
+            _ = cachedApp(from: URL(fileURLWithPath: cacheKey, isDirectory: true))
+        }
+
+        var unique: [String: DiscoveredApp] = [:]
+        for cached in cachedAppsByPath.values {
+            let app = cached.app
+            if !showSystemApps && app.isSystemApp { continue }
+            unique[app.identifier] = unique[app.identifier] ?? app
+        }
+        return Array(unique.values)
+    }
+
+    static func applicationBundlePath(from eventPath: String) -> String? {
+        let components = URL(fileURLWithPath: eventPath).pathComponents
+        guard let index = components.firstIndex(where: { $0.hasSuffix(".app") }) else { return nil }
+        let path = NSString.path(withComponents: Array(components.prefix(through: index)))
+        return canonicalPath(for: URL(fileURLWithPath: path, isDirectory: true))
+    }
+
+    private static func canonicalPath(for url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    private func cachedApp(from url: URL) -> DiscoveredApp? {
+        let cacheKey = Self.canonicalPath(for: url)
+        let modificationDate = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        if let cached = cachedAppsByPath[cacheKey], cached.modificationDate == modificationDate {
+            return cached.app
+        }
+        guard let app = makeApp(from: url) else { return nil }
+        cachedAppsByPath[cacheKey] = CachedApp(modificationDate: modificationDate, app: app)
+        return app
     }
 
     private func makeApp(from url: URL) -> DiscoveredApp? {

@@ -1,6 +1,6 @@
 import Foundation
 
-struct DiscoveredApp: Identifiable, Hashable {
+public struct DiscoveredApp: Identifiable, Hashable {
     let name: String
     let bundleIdentifier: String?
     let path: String
@@ -10,8 +10,8 @@ struct DiscoveredApp: Identifiable, Hashable {
     let isSystemApp: Bool
     let keywords: [String]
 
-    var id: String { bundleIdentifier ?? path }
-    var identifier: String { id }
+    public var id: String { bundleIdentifier ?? path }
+    public var identifier: String { id }
 
     var searchableText: String {
         (

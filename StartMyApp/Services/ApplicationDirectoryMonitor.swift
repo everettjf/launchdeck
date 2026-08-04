@@ -5,8 +5,9 @@ import CoreServices
 final class ApplicationDirectoryMonitor {
     private var eventStream: FSEventStreamRef?
     private let queue = DispatchQueue(label: "com.startmyapp.directorymonitor", qos: .utility)
-    private let callback: () -> Void
-    private var debounceTimer: Timer?
+    private let callback: ([String]) -> Void
+    private var debounceWorkItem: DispatchWorkItem?
+    private var pendingChangedAppPaths = Set<String>()
     private let debounceDelay: TimeInterval = 2.0 // 2 seconds delay to avoid rapid refreshes
 
     /// Directories to monitor for application changes
@@ -16,7 +17,7 @@ final class ApplicationDirectoryMonitor {
     /// - Parameters:
     ///   - fileManager: FileManager instance (for testing)
     ///   - callback: Closure to call when directory changes are detected
-    init(fileManager: FileManager = .default, onChange callback: @escaping () -> Void) {
+    init(fileManager: FileManager = .default, onChange callback: @escaping ([String]) -> Void) {
         self.callback = callback
 
         // Build list of paths to monitor
@@ -115,8 +116,9 @@ final class ApplicationDirectoryMonitor {
         eventStream = nil
 
         // Cancel any pending debounce timer
-        debounceTimer?.invalidate()
-        debounceTimer = nil
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
+        pendingChangedAppPaths.removeAll()
 
         print("🛑 Application directory monitor stopped")
     }
@@ -127,7 +129,7 @@ final class ApplicationDirectoryMonitor {
         }
 
         // Check if any .app files were created, modified, or removed
-        var shouldRefresh = false
+        var changedAppPaths = Set<String>()
 
         for i in 0..<numEvents {
             let path = paths[i]
@@ -140,31 +142,31 @@ final class ApplicationDirectoryMonitor {
                    flags & UInt32(kFSEventStreamEventFlagItemRemoved) != 0 ||
                    flags & UInt32(kFSEventStreamEventFlagItemRenamed) != 0 ||
                    flags & UInt32(kFSEventStreamEventFlagItemModified) != 0 {
-                    shouldRefresh = true
+                    if let appPath = ApplicationDiscoveryService.applicationBundlePath(from: path) {
+                        changedAppPaths.insert(appPath)
+                    }
                     print("📁 Detected app change: \(path)")
-                    break
                 }
             }
         }
 
-        if shouldRefresh {
-            debounceRefresh()
+        if !changedAppPaths.isEmpty {
+            debounceRefresh(paths: changedAppPaths)
         }
     }
 
-    private func debounceRefresh() {
-        // Cancel existing timer
-        debounceTimer?.invalidate()
-
-        // Create new timer on main thread
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-
-            self.debounceTimer = Timer.scheduledTimer(withTimeInterval: self.debounceDelay, repeats: false) { [weak self] _ in
-                print("🔄 Directory change detected, triggering refresh after debounce...")
-                self?.callback()
-            }
+    private func debounceRefresh(paths: Set<String>) {
+        pendingChangedAppPaths.formUnion(paths)
+        debounceWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let paths = Array(self.pendingChangedAppPaths)
+            self.pendingChangedAppPaths.removeAll()
+            print("🔄 \(paths.count) application bundle(s) changed, incrementally refreshing...")
+            self.callback(paths)
         }
+        debounceWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + debounceDelay, execute: workItem)
     }
 
     deinit {
