@@ -86,6 +86,15 @@ struct SettingsView: View {
                 foundationModelsFooter
                     .font(.caption)
             }
+
+            Section("More Apps") {
+                Link(destination: URL(string: "https://apps.apple.com/us/app/myjsondiff/id6742816661")!) {
+                    Label("MyJSONDiff", systemImage: "curlybraces")
+                }
+                Link(destination: URL(string: "https://apps.apple.com/us/app/scriptwidget/id1555600758")!) {
+                    Label("ScriptWidget", systemImage: "curlybraces.square")
+                }
+            }
         }
         .formStyle(.grouped)
         .frame(width: 500, height: 600)
