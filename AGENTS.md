@@ -141,3 +141,10 @@ for try await partial in stream {
 - [Generating Swift data structures with guided generation](https://developer.apple.com/documentation/FoundationModels/generating-swift-data-structures-with-guided-generation)
 - [Expanding generation with tool calling](https://developer.apple.com/documentation/FoundationModels/expanding-generation-with-tool-calling)
 - [Human Interface Guidelines: Generative AI](https://developer.apple.com/design/human-interface-guidelines/technologies/generative-ai)
+
+## Product and Performance Priorities
+
+- Make the README and onboarding state the concrete advantage over Spotlight, Raycast, and LaunchBar in one sentence.
+- Add repeatable launch-index benchmarks covering cold start, application discovery, search latency, semantic-search opt-in, and large installed-app sets.
+- Keep ordinary fuzzy search instant and fully functional when AI search is unavailable or disabled.
+- Treat app launch history as private local behavioral data; document retention and provide a clear reset action.
