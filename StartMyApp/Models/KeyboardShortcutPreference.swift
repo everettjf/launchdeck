@@ -91,7 +91,7 @@ private enum KeyCodeTransformer {
 }
 
 extension NSEvent.ModifierFlags {
-    var carbonFlags: UInt32 {
+    nonisolated var carbonFlags: UInt32 {
         var result: UInt32 = 0
         if contains(.command) { result |= UInt32(cmdKey) }
         if contains(.option) { result |= UInt32(optionKey) }

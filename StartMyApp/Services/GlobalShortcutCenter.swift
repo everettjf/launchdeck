@@ -1,7 +1,9 @@
 import AppKit
 import Carbon
 
-final class GlobalShortcutCenter {
+/// Carbon hotkey events are delivered on the main run loop, so all state is
+/// effectively main-thread-confined; the class opts out of actor isolation.
+nonisolated final class GlobalShortcutCenter {
     static let shared = GlobalShortcutCenter()
 
     private var hotKeyRef: EventHotKeyRef?
@@ -73,8 +75,10 @@ final class GlobalShortcutCenter {
     }
 }
 
+extension GlobalShortcutCenter: @unchecked Sendable {}
+
 private extension String {
-    var fourCharCode: OSType {
+    nonisolated var fourCharCode: OSType {
         var result: OSType = 0
         for scalar in unicodeScalars.prefix(4) {
             result = (result << 8) + OSType(scalar.value)

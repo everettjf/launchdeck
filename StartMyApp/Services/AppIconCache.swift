@@ -1,10 +1,10 @@
 import AppKit
 
+@MainActor
 final class AppIconCache {
     static let shared = AppIconCache()
 
     private let cache = NSCache<NSString, NSImage>()
-    private let queue = DispatchQueue(label: "app-icon-cache", qos: .userInitiated)
 
     func icon(for path: String, size: CGFloat, completion: @escaping (NSImage) -> Void) {
         let key = cacheKey(path: path, size: size)
@@ -13,15 +13,20 @@ final class AppIconCache {
             return
         }
 
-        queue.async { [weak self] in
-            guard let self else { return }
-            let image = NSWorkspace.shared.icon(forFile: path)
-            image.size = NSSize(width: size, height: size)
-            self.cache.setObject(image, forKey: key as NSString)
-            DispatchQueue.main.async {
-                completion(image)
-            }
+        Task {
+            // NSWorkspace icon loading off the main actor; NSCache is thread-safe
+            let image = await Task.detached(priority: .userInitiated) {
+                Self.fetchIcon(path: path, size: size)
+            }.value
+            cache.setObject(image, forKey: key as NSString)
+            completion(image)
         }
+    }
+
+    nonisolated private static func fetchIcon(path: String, size: CGFloat) -> NSImage {
+        let image = NSWorkspace.shared.icon(forFile: path)
+        image.size = NSSize(width: size, height: size)
+        return image
     }
 
     private func cacheKey(path: String, size: CGFloat) -> String {

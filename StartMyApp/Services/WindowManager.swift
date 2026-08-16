@@ -1,96 +1,67 @@
 import AppKit
+import SwiftUI
 
+/// Shows and activates the main window.
+///
+/// The main window is tracked explicitly: the main scene's content registers its
+/// NSWindow via WindowAccessor, and the scene's OpenWindowAction is used to
+/// recreate the window after it was closed — no title/class-name heuristics and
+/// no simulated Cmd+N.
+@MainActor
 final class WindowManager {
     static let shared = WindowManager()
 
+    /// Identifier of the main WindowGroup scene.
+    static let mainSceneID = "main"
+
+    private weak var mainWindow: NSWindow?
+    private var openWindowAction: OpenWindowAction?
+
     private init() {}
 
+    /// Called from the main scene's content when its window appears.
+    func register(window: NSWindow) {
+        mainWindow = window
+    }
+
+    func unregister(window: NSWindow) {
+        if mainWindow == window {
+            mainWindow = nil
+        }
+    }
+
+    /// Called once from the main scene's content; the action stays valid for the
+    /// scene and can recreate the window after it has been closed.
+    func registerOpenWindowAction(_ action: OpenWindowAction) {
+        openWindowAction = action
+    }
+
     func showMainWindow(completion: (() -> Void)? = nil) {
-        DispatchQueue.main.async {
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let window = mainWindow {
+            // Window exists: unhide and bring it to front
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            complete(completion, after: 0.1)
+        } else if let openWindowAction {
+            // Window was closed: ask the scene to recreate it
+            openWindowAction(id: Self.mainSceneID)
+            NSApp.activate(ignoringOtherApps: true)
+            // Creating a window takes longer than raising an existing one
+            complete(completion, after: 0.3)
+        } else {
+            completion?()
+        }
+    }
 
-            // Find the main app window (WindowGroup window)
-            let mainWindow = NSApp.windows.first { window in
-                let canBeKey = window.canBecomeKey
-                let isNormalLevel = window.level == .normal
-                let notStatusBar = !window.className.contains("StatusBar")
-                let notSettings = !window.title.contains("Settings") && !window.title.contains("Preferences")
-
-                return canBeKey && isNormalLevel && notStatusBar && notSettings
-            }
-
-            if let window = mainWindow {
-                // Window exists, show it
-
-                // Make sure the window is visible and unhidden
-                if window.isMiniaturized {
-                    window.deminiaturize(nil)
-                }
-
-                // Bring window to front
-                window.orderFrontRegardless()
-
-                // Activate the app and make window key
-                NSApp.activate(ignoringOtherApps: true)
-                window.makeKeyAndOrderFront(nil)
-
-                // Force window to be main
-                if !window.isKeyWindow {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        window.makeKey()
-                    }
-                }
-
-                // Give the window time to become key before calling completion
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    completion?()
-                }
-            } else {
-                // No window found, try to create a new one using Cmd+N
-
-                // Try to trigger new window via menu
-                if let newMenuItem = NSApp.mainMenu?.item(withTitle: "File")?.submenu?.item(withTitle: "New"),
-                   let action = newMenuItem.action {
-                    NSApp.sendAction(action, to: newMenuItem.target, from: nil)
-                } else {
-                    // Fallback: use key equivalent for Cmd+N
-                    let event = NSEvent.keyEvent(
-                        with: .keyDown,
-                        location: .zero,
-                        modifierFlags: .command,
-                        timestamp: ProcessInfo.processInfo.systemUptime,
-                        windowNumber: 0,
-                        context: nil,
-                        characters: "n",
-                        charactersIgnoringModifiers: "n",
-                        isARepeat: false,
-                        keyCode: 45
-                    )
-                    if let event = event {
-                        NSApp.sendEvent(event)
-                    }
-                }
-
-                // After a short delay, try to find and show the window
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    if let window = NSApp.windows.first(where: {
-                        $0.canBecomeKey &&
-                        $0.level == .normal &&
-                        !$0.className.contains("StatusBar") &&
-                        !$0.title.contains("Settings")
-                    }) {
-                        window.makeKeyAndOrderFront(nil)
-                        window.orderFrontRegardless()
-
-                        // Give the window time to appear before calling completion
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            completion?()
-                        }
-                    } else {
-                        completion?()
-                    }
-                }
-            }
+    private func complete(_ completion: (() -> Void)?, after delay: TimeInterval) {
+        guard let completion else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            completion()
         }
     }
 }

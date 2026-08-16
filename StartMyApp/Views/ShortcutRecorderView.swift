@@ -57,7 +57,10 @@ final class ShortcutRecorderControl: NSControl {
     }
 
     deinit {
-        stopMonitoring()
+        // NSView deallocation happens on the main thread
+        MainActor.assumeIsolated {
+            stopMonitoring()
+        }
     }
 
     override var intrinsicContentSize: NSSize {

@@ -20,12 +20,15 @@
 		4196500FF0036DA8B3345ABB /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01B170DB7EFB1D55E37E7B2 /* WindowManager.swift */; };
 		47BF5EE05DC1418F62467B00 /* GlobalShortcutCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89893250D5DF87775FFDB58D /* GlobalShortcutCenter.swift */; };
 		59BB63E15F42330F2ABAE7B5 /* AppIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF365BB60BCFD760DF2F031B /* AppIconCache.swift */; };
+		59C15311712AAC258F339C56 /* SemanticSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEE6EED7906823F671F75C52 /* SemanticSearchController.swift */; };
 		5D9AF963A20B03FE01305ACA /* FolderTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B822DEFA5BF878495654449 /* FolderTile.swift */; };
+		67811DBFE1C2D36F25479D78 /* LayoutController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F72BBAA2C56854307CA5607 /* LayoutController.swift */; };
 		6E664EF0AF88C0D43C9A5BCD /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FCC38CC0AE7FD9702FF4EC /* AppState.swift */; };
 		7877C2A8D44DD65D0F7AE9CB /* StatusItemCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1D25701E403E81EFAB0DBC /* StatusItemCoordinator.swift */; };
 		7F4C4259A130D4770C91F215 /* AboutWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3145F7C21D496CF72FE3D830 /* AboutWindowController.swift */; };
 		8D96201155B6E022FE8A2633 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F5221B081AC1694945F7F59 /* SettingsView.swift */; };
 		A3CB0A0A79A509647E9352BB /* AppGridSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9822B294B14643F31C650F83 /* AppGridSection.swift */; };
+		AAFFD1EE58FF59E9292C6DE5 /* WindowAccessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0F9A210818A5BC124A22EA /* WindowAccessor.swift */; };
 		AD77A8B767839C05543B1873 /* LayoutStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94459895E5928C29DEAC6316 /* LayoutStore.swift */; };
 		C5FB55D0DF0F082D7F05E0C7 /* Bundle+AppName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A03C09647B982BB33855E70 /* Bundle+AppName.swift */; };
 		CE8992008E7A2D3DF7489E7A /* RecentsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240191C89F8A64CE0BF6539F /* RecentsStore.swift */; };
@@ -38,6 +41,7 @@
 
 /* Begin PBXFileReference section */
 		019C93461E77CBBC4A908043 /* StartMyAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartMyAppApp.swift; sourceTree = "<group>"; };
+		0F72BBAA2C56854307CA5607 /* LayoutController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutController.swift; sourceTree = "<group>"; };
 		198F0D33EC315BF6B81A465D /* StartMyApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StartMyApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A03C09647B982BB33855E70 /* Bundle+AppName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bundle+AppName.swift"; sourceTree = "<group>"; };
 		1A3B2385A41D3A668D596060 /* SemanticSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticSearchService.swift; sourceTree = "<group>"; };
@@ -63,6 +67,8 @@
 		A8E93DEF00723845EEA7862F /* ApplicationDirectoryMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationDirectoryMonitor.swift; sourceTree = "<group>"; };
 		B09690E5EDC020FBB024BDBA /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Core; sourceTree = SOURCE_ROOT; };
 		B7FCC38CC0AE7FD9702FF4EC /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		CE0F9A210818A5BC124A22EA /* WindowAccessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowAccessor.swift; sourceTree = "<group>"; };
+		EEE6EED7906823F671F75C52 /* SemanticSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticSearchController.swift; sourceTree = "<group>"; };
 		EF365BB60BCFD760DF2F031B /* AppIconCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconCache.swift; sourceTree = "<group>"; };
 		F01B170DB7EFB1D55E37E7B2 /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -120,8 +126,10 @@
 				A8E93DEF00723845EEA7862F /* ApplicationDirectoryMonitor.swift */,
 				29BCF44F0EE986AB33E031E7 /* FavoritesStore.swift */,
 				89893250D5DF87775FFDB58D /* GlobalShortcutCenter.swift */,
+				0F72BBAA2C56854307CA5607 /* LayoutController.swift */,
 				94459895E5928C29DEAC6316 /* LayoutStore.swift */,
 				240191C89F8A64CE0BF6539F /* RecentsStore.swift */,
+				EEE6EED7906823F671F75C52 /* SemanticSearchController.swift */,
 				1A3B2385A41D3A668D596060 /* SemanticSearchService.swift */,
 				929E04413D2F2598521F1617 /* ShortcutCoordinator.swift */,
 				5A1D25701E403E81EFAB0DBC /* StatusItemCoordinator.swift */,
@@ -141,6 +149,7 @@
 				9F5221B081AC1694945F7F59 /* SettingsView.swift */,
 				606438DD9669CFE654FB792D /* ShortcutRecorderView.swift */,
 				53C28913B56084A90B86BE9B /* VisualEffectBackground.swift */,
+				CE0F9A210818A5BC124A22EA /* WindowAccessor.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -260,8 +269,10 @@
 				5D9AF963A20B03FE01305ACA /* FolderTile.swift in Sources */,
 				47BF5EE05DC1418F62467B00 /* GlobalShortcutCenter.swift in Sources */,
 				3FF1232E1EDF75140324A90A /* KeyboardShortcutPreference.swift in Sources */,
+				67811DBFE1C2D36F25479D78 /* LayoutController.swift in Sources */,
 				AD77A8B767839C05543B1873 /* LayoutStore.swift in Sources */,
 				CE8992008E7A2D3DF7489E7A /* RecentsStore.swift in Sources */,
+				59C15311712AAC258F339C56 /* SemanticSearchController.swift in Sources */,
 				0ED9B2DD460DABB7877A3C7C /* SemanticSearchService.swift in Sources */,
 				8D96201155B6E022FE8A2633 /* SettingsView.swift in Sources */,
 				33B6B9491BEB5AA7C3D1DB62 /* ShortcutCoordinator.swift in Sources */,
@@ -269,6 +280,7 @@
 				02AFF82A36220A6CB78016E5 /* StartMyAppApp.swift in Sources */,
 				7877C2A8D44DD65D0F7AE9CB /* StatusItemCoordinator.swift in Sources */,
 				F13C094CB540D7D7643937E0 /* VisualEffectBackground.swift in Sources */,
+				AAFFD1EE58FF59E9292C6DE5 /* WindowAccessor.swift in Sources */,
 				4196500FF0036DA8B3345ABB /* WindowManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -316,6 +328,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -361,6 +374,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};

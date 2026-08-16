@@ -27,11 +27,12 @@ final class ShortcutCoordinator: ObservableObject {
         if preferences.isGlobalShortcutEnabled {
             GlobalShortcutCenter.shared.register(shortcut: preferences.globalShortcut) { [weak self] in
                 guard let self else { return }
+                let appState = self.appState
 
                 // Show window first, then focus search after window is visible
                 WindowManager.shared.showMainWindow {
-                    Task { @MainActor [weak self] in
-                        self?.appState.postSearchFocusRequest()
+                    Task { @MainActor in
+                        appState.postSearchFocusRequest()
                     }
                 }
             }

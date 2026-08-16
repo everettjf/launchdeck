@@ -20,8 +20,9 @@ struct StartMyAppApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: WindowManager.mainSceneID) {
             ContentView()
+                .background(WindowAccessor())
                 .environmentObject(appState)
                 .environmentObject(preferences)
                 .frame(minWidth: 720, minHeight: 520)

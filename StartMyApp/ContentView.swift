@@ -5,6 +5,7 @@ import LaunchDeckCore
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var preferences: AppPreferences
+    @Environment(\.openWindow) private var openWindow
 
     @FocusState private var isSearchFieldFocused: Bool
     @State private var searchText: String = ""
@@ -288,6 +289,7 @@ struct ContentView: View {
 
 private func configure() {
     searchText = appState.searchQuery
+    WindowManager.shared.registerOpenWindowAction(openWindow)
     focusCancellable = appState.searchFocusPublisher
         .receive(on: RunLoop.main)
         .sink { _ in

@@ -4,32 +4,36 @@ import Foundation
 import LaunchDeckCore
 import SwiftUI
 
+/// Orchestrates the app: discovery, favorites, recents, and launch actions.
+/// Layout mutations live in LayoutController, AI search in SemanticSearchController,
+/// and pure ranking/sorting/merge rules in LaunchDeckCore.
 @MainActor
 final class AppState: ObservableObject {
     @Published private(set) var apps: [DiscoveredApp] = []
-    @Published private(set) var layout: [AppCollectionItem]
     @Published var searchQuery: String = ""
     @Published private(set) var favorites: Set<String>
     @Published private(set) var recents: [RecentLaunch]
-    @Published private(set) var isSemanticSearching: Bool = false
+
+    let layoutController: LayoutController
+    let searchController: SemanticSearchController
 
     var totalAppCount: Int { apps.count }
-    var isSemanticSearchAvailable: Bool {
-        return semanticSearchService != nil
-    }
+
+    // MARK: - Forwarded state from controllers
+
+    var layout: [AppCollectionItem] { layoutController.layout }
+    var isSemanticSearching: Bool { searchController.isSearching }
+    var semanticSearchResults: [DiscoveredApp] { searchController.results }
+    var isSemanticSearchAvailable: Bool { searchController.isAvailable }
 
     private let favoritesStore: FavoritesStore
     private let recentsStore: RecentsStore
     private nonisolated let discoveryService: ApplicationDiscoveryService
-    private let layoutStore: LayoutStore
     private let preferences: AppPreferences
     private let focusPublisher = PassthroughSubject<Void, Never>()
-    private var semanticSearchService: Any? // SemanticSearchService for macOS 26+
 
     private var appsByIdentifier: [String: DiscoveredApp] = [:]
     private var cancellables = Set<AnyCancellable>()
-    private var semanticSearchTask: Task<Void, Never>?
-    private var debounceTimer: Timer?
     private var directoryMonitor: ApplicationDirectoryMonitor?
 
     var searchFocusPublisher: AnyPublisher<Void, Never> {
@@ -49,31 +53,35 @@ final class AppState: ObservableObject {
         self.favoritesStore = favoritesStore
         self.recentsStore = recentsStore
         self.discoveryService = discoveryService
-        self.layoutStore = layoutStore
         self.favorites = favoritesStore.load()
         self.recents = recentsStore.load()
-        self.layout = layoutStore.load()
+
+        let layoutController = LayoutController(layoutStore: layoutStore)
+        let searchController = SemanticSearchController()
+        self.layoutController = layoutController
+        self.searchController = searchController
+
+        // Forward controller changes so views observing AppState stay live
+        layoutController.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        searchController.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         setupBindings()
         setupDirectoryMonitoring()
         refreshApps()
-        initializeSemanticSearch()
-    }
 
-    private func initializeSemanticSearch() {
-        Task {
-            let service = await SemanticSearchService()
-            await MainActor.run {
-                self.semanticSearchService = service
-            }
-        }
+        searchController.appsProvider = { [weak self] in self?.apps ?? [] }
+        searchController.initialize()
     }
 
     private func setupBindings() {
         preferences.$showSystemApps
             .removeDuplicates()
-            .sink { [weak self] newValue in
-                self?.refreshApps(showSystemApps: newValue)
+            .sink { [weak self] _ in
+                self?.refreshApps()
             }
             .store(in: &cancellables)
     }
@@ -88,33 +96,22 @@ final class AppState: ObservableObject {
     }
 
     func refreshApps() {
-        refreshApps(showSystemApps: preferences.showSystemApps)
+        refreshApps(changedPaths: nil)
     }
 
-    private func refreshApps(changedPaths: [String]) {
+    private func refreshApps(changedPaths: [String]?) {
         let discoveryService = discoveryService
         let showSystemApps = preferences.showSystemApps
-        weak var weakSelf = self
-        Task.detached(priority: .userInitiated) {
-            let discovered = discoveryService.refreshApplications(
-                changedPaths: changedPaths,
-                showSystemApps: showSystemApps
-            )
-            await MainActor.run {
-                weakSelf?.handleDiscoveredApps(discovered)
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let discovered: [DiscoveredApp]
+            if let changedPaths {
+                discovered = discoveryService.refreshApplications(changedPaths: changedPaths,
+                                                                  showSystemApps: showSystemApps)
+            } else {
+                discovered = discoveryService.discoverApplications(showSystemApps: showSystemApps)
             }
-        }
-    }
-
-    private func refreshApps(showSystemApps: Bool) {
-        let discoveryService = discoveryService
-        weak var weakSelf = self
-        Task.detached(priority: .userInitiated) {
-            let discovered = await discoveryService.discoverApplications(showSystemApps: showSystemApps)
-            await MainActor.run {
-                guard let appState = weakSelf else { return }
-                appState.handleDiscoveredApps(discovered)
-            }
+            await self.handleDiscoveredApps(discovered)
         }
     }
 
@@ -123,14 +120,10 @@ final class AppState: ObservableObject {
             apps = discovered
         }
         appsByIdentifier = Dictionary(uniqueKeysWithValues: discovered.map { ($0.identifier, $0) })
-        syncLayoutWithDiscoveredApps()
+        layoutController.sync(with: discovered)
     }
 
-    private func syncLayoutWithDiscoveredApps() {
-        let updatedLayout = LayoutSynchronizer.sync(layout: layout, with: apps)
-        layout = updatedLayout
-        layoutStore.save(updatedLayout)
-    }
+    // MARK: - Favorites & hidden apps
 
     func toggleFavorite(for app: DiscoveredApp) {
         if favorites.contains(app.identifier) {
@@ -159,6 +152,8 @@ final class AppState: ObservableObject {
     func isHidden(_ app: DiscoveredApp) -> Bool {
         preferences.hiddenApps.contains(app.identifier)
     }
+
+    // MARK: - Launching
 
     func launch(_ app: DiscoveredApp) {
         let url = URL(fileURLWithPath: app.path)
@@ -194,6 +189,8 @@ final class AppState: ObservableObject {
         NSPasteboard.general.setString(app.path, forType: .string)
     }
 
+    // MARK: - Recents
+
     func removeFromRecents(_ app: DiscoveredApp) {
         recents.removeAll { $0.identifier == app.identifier }
         recentsStore.save(recents)
@@ -210,48 +207,15 @@ final class AppState: ObservableObject {
         recentsStore.save([])
     }
 
+    // MARK: - Search
+
     func postSearchFocusRequest() {
         focusPublisher.send()
     }
 
     // Called when search query changes - handles semantic search state
     func handleSearchQueryChange(_ query: String) {
-        // Cancel any pending debounce timer
-        debounceTimer?.invalidate()
-        debounceTimer = nil
-
-        // 1. If search is empty, clear AI results
-        guard !query.isEmpty else {
-            clearSemanticSearch()
-            return
-        }
-
-        // 2. Check if using AI search (starts with /)
-        let useAISearch = query.hasPrefix("/")
-        let actualQuery = useAISearch ? String(query.dropFirst()) : query
-
-        // 3. If not using AI search, clear AI results
-        if !useAISearch {
-            clearSemanticSearch()
-            return
-        }
-
-        // 4. If only "/" is entered (no actual query), clear AI results
-        if actualQuery.isEmpty {
-            clearSemanticSearch()
-            return
-        }
-
-        // 5. If using AI search (/xxx), trigger semantic search with debounce
-        if isSemanticSearchAvailable, !actualQuery.trimmingCharacters(in: .whitespaces).isEmpty {
-            // Debounce: wait 2 seconds before triggering AI search
-            debounceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-                guard let self = self else { return }
-                Task { @MainActor in
-                    self.triggerSemanticSearch(query: actualQuery)
-                }
-            }
-        }
+        searchController.handleQueryChange(query)
     }
 
     func appsMatchingSearch() -> [DiscoveredApp] {
@@ -279,56 +243,7 @@ final class AppState: ObservableObject {
                                     favorites: favorites, recents: recents, layout: layout)
     }
 
-    private func clearSemanticSearch() {
-        // Cancel any debounce timer
-        debounceTimer?.invalidate()
-        debounceTimer = nil
-
-        // Cancel any ongoing search task
-        semanticSearchTask?.cancel()
-
-        // Clear the searching state
-        isSemanticSearching = false
-
-        // Clear results
-        if !semanticSearchResults.isEmpty {
-            semanticSearchResults = []
-        }
-    }
-
-    private func triggerSemanticSearch(query: String) {
-        // Cancel any ongoing search
-        semanticSearchTask?.cancel()
-
-        isSemanticSearching = true
-
-        semanticSearchTask = Task { @MainActor in
-            guard let service = semanticSearchService as? SemanticSearchService else {
-                isSemanticSearching = false
-                return
-            }
-
-            let results = await service.searchApps(apps, query: query)
-
-            // Check if search query hasn't changed
-            let currentQuery = self.searchQuery.hasPrefix("/")
-                ? String(self.searchQuery.dropFirst())
-                : self.searchQuery
-
-            if currentQuery == query && !Task.isCancelled {
-                self.updateSemanticResults(results.map { $0.app })
-            }
-
-            isSemanticSearching = false
-        }
-    }
-
-    @Published private(set) var semanticSearchResults: [DiscoveredApp] = []
-
-    private func updateSemanticResults(_ results: [DiscoveredApp]) {
-        semanticSearchResults = results
-        objectWillChange.send()
-    }
+    // MARK: - App queries
 
     func favoriteApps() -> [DiscoveredApp] {
         orderedIdentifiers().compactMap { identifier in
@@ -402,113 +317,48 @@ final class AppState: ObservableObject {
         appsByIdentifier[identifier]
     }
 
+    // MARK: - Layout façade (delegates to LayoutController)
+
     func collection(withID id: String) -> AppCollectionItem? {
-        layout.first { $0.id == id }
+        layoutController.collection(withID: id)
     }
 
     func createEmptyFolder(named name: String) {
-        modifyLayout { layout in
-            let folder = AppCollectionItem.folder(name: name, appIdentifiers: [])
-            layout.append(folder)
-        }
+        layoutController.createEmptyFolder(named: name)
     }
 
     func renameFolder(id: String, to newName: String) {
-        guard !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        modifyLayout { layout in
-            guard let index = layout.firstIndex(where: { $0.id == id }),
-                  layout[index].kind == .folder else { return }
-            layout[index].folder?.name = newName
-        }
+        layoutController.renameFolder(id: id, to: newName)
     }
 
     func moveItem(_ draggedID: String, before targetID: String?) {
-        guard draggedID != targetID else { return }
-        modifyLayout { layout in
-            guard let fromIndex = layout.firstIndex(where: { $0.id == draggedID }) else { return }
-            let item = layout.remove(at: fromIndex)
-            if let targetID, let targetIndex = layout.firstIndex(where: { $0.id == targetID }) {
-                layout.insert(item, at: targetIndex)
-            } else {
-                layout.append(item)
-            }
-        }
+        layoutController.moveItem(draggedID, before: targetID)
     }
 
     func addApp(_ appID: String, toFolder folderID: String) {
-        modifyLayout { layout in
-            guard layout.contains(where: { $0.id == folderID }) else { return }
-            if let appIndex = layout.firstIndex(where: { $0.id == appID }) {
-                layout.remove(at: appIndex)
-            }
-            guard let folderIndex = layout.firstIndex(where: { $0.id == folderID }),
-                  var folder = layout[folderIndex].folder else { return }
-            guard !folder.appIdentifiers.contains(appID) else { return }
-            folder.appIdentifiers.append(appID)
-            layout[folderIndex].folder = folder
-        }
+        layoutController.addApp(appID, toFolder: folderID)
     }
 
     func createFolder(byCombining firstID: String, and secondID: String) {
-        guard firstID != secondID else { return }
-        modifyLayout { layout in
-            guard let firstIndex = layout.firstIndex(where: { $0.id == firstID }),
-                  let secondIndex = layout.firstIndex(where: { $0.id == secondID }) else { return }
-            let firstItem = layout[firstIndex]
-            let secondItem = layout[secondIndex]
-            guard let firstApp = firstItem.appIdentifier,
-                  let secondApp = secondItem.appIdentifier else { return }
-
-            let lowerIndex = min(firstIndex, secondIndex)
-            let higherIndex = max(firstIndex, secondIndex)
-            layout.remove(at: higherIndex)
-            layout.remove(at: lowerIndex)
-
-            let folderName = defaultFolderName(suggesting: [firstApp, secondApp])
-            let folder = AppCollectionItem.folder(name: folderName, appIdentifiers: [firstApp, secondApp])
-            layout.insert(folder, at: lowerIndex)
-        }
+        let identifiers = [firstID, secondID]
+        let folderName = FolderNaming.suggestedName(forAppIdentifiers: identifiers,
+                                                    appsByIdentifier: appsByIdentifier)
+            ?? NSLocalizedString("New Folder", comment: "Default folder name")
+        layoutController.createFolder(byCombining: firstID, and: secondID, named: folderName)
     }
 
     func removeApp(_ appID: String, fromFolder folderID: String) {
-        modifyLayout { layout in
-            guard let index = layout.firstIndex(where: { $0.id == folderID }),
-                  var folder = layout[index].folder else { return }
-            folder.appIdentifiers.removeAll { $0 == appID }
-            if let dissolved = FolderDissolution.item(for: folder, reusing: layout[index]) {
-                layout[index] = dissolved
-            } else {
-                layout.remove(at: index)
-            }
-        }
+        layoutController.removeApp(appID, fromFolder: folderID)
     }
 
     func deleteFolder(_ folderID: String) {
-        modifyLayout { layout in
-            guard let index = layout.firstIndex(where: { $0.id == folderID }),
-                  let folder = layout[index].folder else { return }
-            layout.remove(at: index)
-            let insertIndex = min(index, layout.count)
-            for (offset, identifier) in folder.appIdentifiers.enumerated() {
-                layout.insert(.app(identifier), at: insertIndex + offset)
-            }
-        }
+        layoutController.deleteFolder(folderID)
     }
+
+    // MARK: - Private helpers
 
     private func orderedIdentifiers() -> [String] {
-        layout.flatMap { $0.containedAppIdentifiers }
-    }
-
-    private func defaultFolderName(suggesting identifiers: [String]) -> String {
-        FolderNaming.suggestedName(forAppIdentifiers: identifiers, appsByIdentifier: appsByIdentifier)
-            ?? NSLocalizedString("New Folder", comment: "Default folder name")
-    }
-
-    private func modifyLayout(_ modify: (inout [AppCollectionItem]) -> Void) {
-        var updated = layout
-        modify(&updated)
-        layout = updated
-        layoutStore.save(updated)
+        layoutController.orderedIdentifiers
     }
 
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {
