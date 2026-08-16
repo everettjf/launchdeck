@@ -2,7 +2,6 @@ import AppKit
 import Combine
 import Foundation
 import SwiftUI
-import UniformTypeIdentifiers
 
 @MainActor
 final class AppState: ObservableObject {
@@ -262,21 +261,6 @@ final class AppState: ObservableObject {
 
     func postSearchFocusRequest() {
         focusPublisher.send()
-    }
-
-    func exportAppCatalog() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.isExtensionHidden = false
-        panel.canCreateDirectories = true
-        panel.nameFieldStringValue = defaultExportFileName()
-
-        panel.begin { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor [weak self] in
-                await self?.writeCatalog(to: url)
-            }
-        }
     }
 
     // Called when search query changes - handles semantic search state
@@ -648,44 +632,6 @@ final class AppState: ObservableObject {
         layoutStore.save(updated)
     }
 
-    private func writeCatalog(to url: URL) async {
-        let exportApps = apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-        let payload = exportApps.map { app -> ExportedApp in
-            return ExportedApp(name: app.name,
-                               bundleIdentifier: app.bundleIdentifier,
-                               path: app.path,
-                               category: app.category,
-                               version: app.bundleVersion,
-                               developer: app.developer,
-                               isSystemApp: app.isSystemApp)
-        }
-
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(payload)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            presentExportError(error.localizedDescription)
-        }
-    }
-
-    private func defaultExportFileName() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd_HHmm"
-        let timestamp = formatter.string(from: Date())
-        return "StartMyApp_Applications_\(timestamp).json"
-    }
-
-    private func presentExportError(_ message: String) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Export Failed"
-        alert.informativeText = message
-        alert.runModal()
-    }
-
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {
         let allApps = apps
         let recentsLookup = Dictionary(uniqueKeysWithValues: recents.map { ($0.identifier, $0) })
@@ -740,25 +686,5 @@ private extension Array where Element == String {
             counts[element, default: 0] += 1
         }
         return counts.max { $0.value < $1.value }?.key
-    }
-}
-
-private struct ExportedApp: Codable {
-    let name: String
-    let bundleIdentifier: String?
-    let path: String
-    let category: String?
-    let version: String?
-    let developer: String?
-    let isSystemApp: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case name
-        case bundleIdentifier = "bundle_identifier"
-        case path
-        case category
-        case version
-        case developer
-        case isSystemApp = "is_system_app"
     }
 }

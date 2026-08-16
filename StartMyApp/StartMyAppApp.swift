@@ -44,9 +44,6 @@ struct StartMyAppApp: App {
                 }
                 Divider()
                 Button("Clear Recent Launches", action: appState.clearRecents)
-                Button("Export Applications to JSON…") {
-                    appState.exportAppCatalog()
-                }
             }
 
             CommandGroup(replacing: .help) {

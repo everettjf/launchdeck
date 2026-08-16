@@ -151,16 +151,6 @@ final class ShortcutRecorderControl: NSControl {
         print("Starting event monitors")
         stopMonitoring()
 
-        // Check for Accessibility permissions
-        let trusted = AXIsProcessTrusted()
-        print("Accessibility trusted: \(trusted)")
-
-        if !trusted {
-            // Request permission
-            let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-            AXIsProcessTrustedWithOptions(options)
-        }
-
         // Use BOTH local and global monitors
         // Local monitor catches non-Command shortcuts
         let localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -171,7 +161,7 @@ final class ShortcutRecorderControl: NSControl {
             return event
         }
 
-        // Global monitor catches Command shortcuts (requires Accessibility permission)
+        // Global monitor catches Command shortcuts
         let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             print("Global monitor caught event: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
             self?.handleKeyEvent(event)
