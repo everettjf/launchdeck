@@ -17,12 +17,11 @@ A modern macOS app launcher focused on fast discovery, organization, and launch.
 - Search-first: keyword filtering + optional AI semantic search (type `/`)
 - Recently launched and most-launched sorting, with hidden apps support
 - Menu bar entry + global hotkey to summon instantly
-- Export app catalog to JSON for backup and analysis
 
 ## Requirements
 
-- macOS 12.0+
-- Xcode 14.0+ (local build)
+- macOS 26.0+
+- Xcode 26.0+ (local build)
 - AI semantic search requires Apple Intelligence-capable hardware, enabled in System Settings, and the model available
 
 ## Build Locally
