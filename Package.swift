@@ -21,7 +21,7 @@ let package = Package(
                 "Services/AboutWindowController.swift", "Services/AppIconCache.swift",
                 "Services/ApplicationDirectoryMonitor.swift", "Services/FavoritesStore.swift",
                 "Services/GlobalShortcutCenter.swift", "Services/LayoutStore.swift",
-                "Services/LearnWindowController.swift", "Services/RecentsStore.swift",
+                "Services/RecentsStore.swift",
                 "Services/SemanticSearchService.swift", "Services/ShortcutCoordinator.swift",
                 "Services/StatusItemCoordinator.swift", "Services/WindowManager.swift",
             ],

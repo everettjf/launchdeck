@@ -85,9 +85,6 @@ struct AppTile: View {
             Button("Copy Path") {
                 appState.copyPathToClipboard(app)
             }
-            Button("App Info") {
-                appState.presentAppInfo(for: app)
-            }
             if let folderID {
                 Divider()
                 Button("Remove from Folder") {

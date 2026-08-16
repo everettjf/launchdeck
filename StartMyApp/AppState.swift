@@ -11,7 +11,6 @@ final class AppState: ObservableObject {
     @Published var searchQuery: String = ""
     @Published private(set) var favorites: Set<String>
     @Published private(set) var recents: [RecentLaunch]
-    @Published var presentedAppInfo: AppInfoData?
     @Published private(set) var isSemanticSearching: Bool = false
 
     var totalAppCount: Int { apps.count }
@@ -278,19 +277,6 @@ final class AppState: ObservableObject {
                 await self?.writeCatalog(to: url)
             }
         }
-    }
-
-    func presentAppInfo(for app: DiscoveredApp) {
-        LearnWindowController.shared.show(for: app)
-    }
-
-    func copyDetails(of info: AppInfoData) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(info.formattedDetails, forType: .string)
-    }
-
-    func dismissAppInfo() {
-        presentedAppInfo = nil
     }
 
     // Called when search query changes - handles semantic search state
@@ -692,15 +678,6 @@ final class AppState: ObservableObject {
         return "StartMyApp_Applications_\(timestamp).json"
     }
 
-    nonisolated private func permissionsString(for path: String) -> String? {
-        var components: [String] = []
-        if FileManager.default.isReadableFile(atPath: path) { components.append("Read") }
-        if FileManager.default.isWritableFile(atPath: path) { components.append("Write") }
-        if FileManager.default.isExecutableFile(atPath: path) { components.append("Execute") }
-        guard !components.isEmpty else { return nil }
-        return components.joined(separator: "/")
-    }
-
     private func presentExportError(_ message: String) {
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -783,49 +760,5 @@ private struct ExportedApp: Codable {
         case version
         case developer
         case isSystemApp = "is_system_app"
-    }
-}
-
-struct AppInfoData: Identifiable {
-    let app: DiscoveredApp
-    let created: Date?
-    let modified: Date?
-    let permissions: String?
-
-    var id: String { app.identifier }
-
-    var formattedDetails: String {
-        var lines: [String] = []
-        lines.append("Name: \(app.name)")
-        if let bundleIdentifier = app.bundleIdentifier {
-            lines.append("Bundle Identifier: \(bundleIdentifier)")
-        }
-        if let version = app.bundleVersion {
-            lines.append("Version: \(version)")
-        }
-        if let developer = app.developer {
-            lines.append("Developer: \(developer)")
-        }
-        if let category = app.category {
-            lines.append("Category: \(category)")
-        }
-        lines.append("System Application: \(app.isSystemApp ? "Yes" : "No")")
-        lines.append("Path: \(app.path)")
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        if let created {
-            lines.append("Created: \(formatter.string(from: created))")
-        }
-        if let modified {
-            lines.append("Last Modified: \(formatter.string(from: modified))")
-        }
-        if let permissions {
-            lines.append("Permissions: \(permissions)")
-        }
-        if !app.keywords.isEmpty {
-            lines.append("Keywords: \(app.keywords.sorted().joined(separator: ", "))")
-        }
-        return lines.joined(separator: "\n")
     }
 }
