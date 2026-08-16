@@ -1,8 +1,8 @@
-# Foundation Models Guide for StartMyApp
+# Foundation Models Guide for LaunchDeck
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.com/invite/eGzEaP6TzR)
 
-This document tracks how StartMyApp integrates Apple Foundation Models (Apple Intelligence), with a focus on semantic search and future extensions.
+This document tracks how LaunchDeck (formerly StartMyApp) integrates Apple Foundation Models (Apple Intelligence), with a focus on semantic search and future extensions.
 
 ## Core Capabilities
 
@@ -11,11 +11,12 @@ This document tracks how StartMyApp integrates Apple Foundation Models (Apple In
 - Structured data generation (Guided Generation)
 - Custom tool calling (Tool Calling)
 
-## Integration Points in StartMyApp
+## Integration Points in LaunchDeck
 
-- Semantic search entry: `StartMyApp/ContentView.swift` (type `/` to trigger AI search)
-- AI search logic: `StartMyApp/Services/SemanticSearchService.swift`
-- Availability + status UI: `StartMyApp/Views/SettingsView.swift`
+- Semantic search entry: `LaunchDeck/ContentView.swift` (type `/` to trigger AI search)
+- AI search orchestration: `LaunchDeck/Services/SemanticSearchController.swift`
+- AI search logic: `LaunchDeck/Services/SemanticSearchService.swift`
+- Availability + status UI: `LaunchDeck/Views/SettingsView.swift`
 
 ## Model Availability Check
 

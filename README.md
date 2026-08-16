@@ -1,4 +1,6 @@
-# StartMyApp
+# LaunchDeck
+
+Formerly StartMyApp.
 
 [https://startmy.app](https://startmy.app)
 
@@ -8,7 +10,7 @@ A modern macOS app launcher focused on fast discovery, organization, and launch.
 
 ## Screenshot
 
-![StartMyApp Screenshot](screenshot.png)
+![LaunchDeck Screenshot](screenshot.png)
 
 ## Highlights
 
@@ -21,13 +23,16 @@ A modern macOS app launcher focused on fast discovery, organization, and launch.
 ## Requirements
 
 - macOS 26.0+
-- Xcode 26.0+ (local build)
+- Xcode 26.0+ and XcodeGen (local build)
 - AI semantic search requires Apple Intelligence-capable hardware, enabled in System Settings, and the model available
 
 ## Build Locally
 
-1. Open `StartMyApp.xcodeproj` in Xcode
-2. Select the `StartMyApp` scheme and run
+1. Install XcodeGen: `brew install xcodegen`
+2. Generate the project: `xcodegen generate`
+3. Open `LaunchDeck.xcodeproj`, select the `LaunchDeck` scheme and run
+
+Run the core logic tests with `cd Core && swift test`.
 
 ## Usage
 
@@ -47,14 +52,20 @@ A modern macOS app launcher focused on fast discovery, organization, and launch.
 ## Project Structure
 
 ```
-StartMyApp/
-├── Models/                      # Data models
-├── Services/                    # Discovery/cache/persistence/hotkey/search
+LaunchDeck/
+├── Models/                      # Preferences and shortcut models
+├── Services/                    # Discovery/cache/persistence/hotkey/window/search controllers
 ├── Views/                       # SwiftUI views
 ├── Extensions/                  # Extensions
-├── AppState.swift               # Core state management
-└── StartMyAppApp.swift           # App entry
+├── AppState.swift               # Orchestrator: discovery, favorites, recents, launch
+└── LaunchDeckApp.swift          # App entry
+Core/                            # LaunchDeckCore SwiftPM package (pure logic + tests)
+├── Sources/LaunchDeckCore/      # Models, discovery, ranking, layout sync, sorting
+├── Sources/ApplicationIndexBenchmark/
+└── Tests/LaunchDeckCoreTests/
 ```
+
+The Xcode project is generated from `project.yml` by XcodeGen; `LaunchDeck.xcodeproj` is not committed.
 
 ## Contributing
 
