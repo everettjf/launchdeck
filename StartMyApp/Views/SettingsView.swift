@@ -88,11 +88,15 @@ struct SettingsView: View {
             }
 
             Section("More Apps") {
-                Link(destination: URL(string: "https://apps.apple.com/us/app/myjsondiff/id6742816661")!) {
-                    Label("MyJSONDiff", systemImage: "curlybraces")
+                if let url = URL(string: "https://apps.apple.com/us/app/myjsondiff/id6742816661") {
+                    Link(destination: url) {
+                        Label("MyJSONDiff", systemImage: "curlybraces")
+                    }
                 }
-                Link(destination: URL(string: "https://apps.apple.com/us/app/scriptwidget/id1555600758")!) {
-                    Label("ScriptWidget", systemImage: "curlybraces.square")
+                if let url = URL(string: "https://apps.apple.com/us/app/scriptwidget/id1555600758") {
+                    Link(destination: url) {
+                        Label("ScriptWidget", systemImage: "curlybraces.square")
+                    }
                 }
             }
         }

@@ -1,5 +1,8 @@
 import Foundation
 import CoreServices
+import OSLog
+
+private nonisolated let logger = Logger(subsystem: "StartMyApp", category: "DirectoryMonitor")
 
 /// Monitors application directories for changes using FSEvents API
 final class ApplicationDirectoryMonitor {
@@ -46,7 +49,6 @@ final class ApplicationDirectoryMonitor {
     /// Start monitoring the application directories
     func startMonitoring() {
         guard eventStream == nil else {
-            print("⚠️ Directory monitor already running")
             return
         }
 
@@ -84,20 +86,14 @@ final class ApplicationDirectoryMonitor {
         )
 
         guard let stream = eventStream else {
-            print("❌ Failed to create FSEvent stream")
+            logger.error("Failed to create FSEvent stream")
             return
         }
 
         FSEventStreamSetDispatchQueue(stream, queue)
 
-        if FSEventStreamStart(stream) {
-            print("✅ Application directory monitor started")
-            print("   Monitoring paths:")
-            for path in monitoredPaths {
-                print("   - \(path)")
-            }
-        } else {
-            print("❌ Failed to start FSEvent stream")
+        if !FSEventStreamStart(stream) {
+            logger.error("Failed to start FSEvent stream")
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
             eventStream = nil
@@ -119,8 +115,6 @@ final class ApplicationDirectoryMonitor {
         debounceWorkItem?.cancel()
         debounceWorkItem = nil
         pendingChangedAppPaths.removeAll()
-
-        print("🛑 Application directory monitor stopped")
     }
 
     private func handleFSEvents(numEvents: Int, eventPaths: UnsafeMutableRawPointer, eventFlags: UnsafePointer<FSEventStreamEventFlags>) {
@@ -145,7 +139,6 @@ final class ApplicationDirectoryMonitor {
                     if let appPath = ApplicationDiscoveryService.applicationBundlePath(from: path) {
                         changedAppPaths.insert(appPath)
                     }
-                    print("📁 Detected app change: \(path)")
                 }
             }
         }
@@ -162,7 +155,6 @@ final class ApplicationDirectoryMonitor {
             guard let self else { return }
             let paths = Array(self.pendingChangedAppPaths)
             self.pendingChangedAppPaths.removeAll()
-            print("🔄 \(paths.count) application bundle(s) changed, incrementally refreshing...")
             self.callback(paths)
         }
         debounceWorkItem = workItem

@@ -41,7 +41,6 @@ public final class ApplicationDiscoveryService {
     public func discoverApplications(showSystemApps: Bool) -> [DiscoveredApp] {
         lock.lock()
         defer { lock.unlock() }
-        print("discover applications with : \(showSystemApps ? "include system apps" : "exclude system apps")")
         var applications: [String: DiscoveredApp] = [:]
         var discoveredPaths = Set<String>()
 

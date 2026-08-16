@@ -32,8 +32,12 @@ struct AboutView: View {
             Divider()
 
             VStack(spacing: 8) {
-                Link("Support & Feedback", destination: URL(string: "https://startmy.app")!)
-                Link("Privacy Policy", destination: URL(string: "https://startmy.app/privacy")!)
+                if let url = URL(string: "https://startmy.app") {
+                    Link("Support & Feedback", destination: url)
+                }
+                if let url = URL(string: "https://startmy.app/privacy") {
+                    Link("Privacy Policy", destination: url)
+                }
             }
 
             Divider()
@@ -42,7 +46,9 @@ struct AboutView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            Link("More Apps", destination: URL(string: "https://xnu.app")!)
+            if let url = URL(string: "https://xnu.app") {
+                Link("More Apps", destination: url)
+            }
         }
         .padding(32)
         .frame(width: 360)

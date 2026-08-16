@@ -21,7 +21,6 @@ final class WindowManager {
 
             if let window = mainWindow {
                 // Window exists, show it
-                print("Found existing main window: \(window.className)")
 
                 // Make sure the window is visible and unhidden
                 if window.isMiniaturized {
@@ -48,11 +47,11 @@ final class WindowManager {
                 }
             } else {
                 // No window found, try to create a new one using Cmd+N
-                print("No main window found, attempting to create new window")
 
                 // Try to trigger new window via menu
-                if let newMenuItem = NSApp.mainMenu?.item(withTitle: "File")?.submenu?.item(withTitle: "New") {
-                    NSApp.sendAction(newMenuItem.action!, to: newMenuItem.target, from: nil)
+                if let newMenuItem = NSApp.mainMenu?.item(withTitle: "File")?.submenu?.item(withTitle: "New"),
+                   let action = newMenuItem.action {
+                    NSApp.sendAction(action, to: newMenuItem.target, from: nil)
                 } else {
                     // Fallback: use key equivalent for Cmd+N
                     let event = NSEvent.keyEvent(

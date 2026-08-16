@@ -88,7 +88,6 @@ final class ShortcutRecorderControl: NSControl {
     }
 
     override func mouseDown(with event: NSEvent) {
-        print("Mouse down - toggling recording")
         isRecording.toggle()
         if isRecording {
             window?.makeFirstResponder(self)
@@ -96,8 +95,6 @@ final class ShortcutRecorderControl: NSControl {
     }
 
     override func keyDown(with event: NSEvent) {
-        print("KeyDown received: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
-
         guard isRecording else {
             super.keyDown(with: event)
             return
@@ -105,7 +102,6 @@ final class ShortcutRecorderControl: NSControl {
 
         // Escape to cancel
         if event.keyCode == 53 {
-            print("Escape - canceling")
             isRecording = false
             return
         }
@@ -114,18 +110,15 @@ final class ShortcutRecorderControl: NSControl {
 
         // Ignore pure modifier keys
         if isPureModifier(event.keyCode) {
-            print("Pure modifier key, ignoring")
             return
         }
 
         // Require at least one modifier
         guard !modifiers.isEmpty else {
-            print("No modifiers present")
             NSSound.beep()
             return
         }
 
-        print("✅ Shortcut recorded: \(event.keyCode) + \(modifiers)")
         let newShortcut = KeyboardShortcutPreference(keyCode: event.keyCode, modifiers: modifiers)
         currentShortcut = newShortcut
         onShortcutChange?(newShortcut)
@@ -133,8 +126,6 @@ final class ShortcutRecorderControl: NSControl {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        print("performKeyEquivalent: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
-
         guard isRecording else {
             return super.performKeyEquivalent(with: event)
         }
@@ -144,17 +135,14 @@ final class ShortcutRecorderControl: NSControl {
 
     override func flagsChanged(with event: NSEvent) {
         // Just ignore modifier-only events
-        print("Flags changed: \(event.modifierFlags)")
     }
 
     private func startMonitoring() {
-        print("Starting event monitors")
         stopMonitoring()
 
         // Use BOTH local and global monitors
         // Local monitor catches non-Command shortcuts
         let localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            print("Local monitor caught event: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
             if self?.handleKeyEvent(event) == true {
                 return nil
             }
@@ -163,7 +151,6 @@ final class ShortcutRecorderControl: NSControl {
 
         // Global monitor catches Command shortcuts
         let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            print("Global monitor caught event: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags)")
             self?.handleKeyEvent(event)
         }
 
@@ -183,38 +170,29 @@ final class ShortcutRecorderControl: NSControl {
             NSEvent.removeMonitor(monitor)
         }
         eventMonitors.removeAll()
-        print("Event monitors stopped")
     }
 
     @discardableResult
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        print("handleKeyEvent: keyCode=\(event.keyCode), chars=\(event.characters ?? "nil")")
-
         // Escape to cancel
         if event.keyCode == 53 {
-            print("Escape - canceling")
             isRecording = false
             return true
         }
 
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        print("  Modifiers extracted: \(modifiers.rawValue)")
-        print("  Is pure modifier: \(isPureModifier(event.keyCode))")
 
         // Ignore pure modifier keys
         if isPureModifier(event.keyCode) {
-            print("Pure modifier key, ignoring")
             return false
         }
 
         // Require at least one modifier
         guard !modifiers.isEmpty else {
-            print("No modifiers present")
             NSSound.beep()
             return false
         }
 
-        print("✅ Shortcut recorded: keyCode=\(event.keyCode) + \(modifiers)")
         let newShortcut = KeyboardShortcutPreference(keyCode: event.keyCode, modifiers: modifiers)
         currentShortcut = newShortcut
         onShortcutChange?(newShortcut)

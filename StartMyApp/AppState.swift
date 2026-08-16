@@ -106,7 +106,6 @@ final class AppState: ObservableObject {
     }
 
     private func refreshApps(showSystemApps: Bool) {
-        print("refresh apps with show system app: \(showSystemApps)")
         let discoveryService = discoveryService
         weak var weakSelf = self
         Task.detached(priority: .userInitiated) {
@@ -265,15 +264,12 @@ final class AppState: ObservableObject {
 
     // Called when search query changes - handles semantic search state
     func handleSearchQueryChange(_ query: String) {
-        print("\n📝 Search query changed to: '\(query)'")
-
         // Cancel any pending debounce timer
         debounceTimer?.invalidate()
         debounceTimer = nil
 
         // 1. If search is empty, clear AI results
         guard !query.isEmpty else {
-            print("   ↳ Query is empty, clearing semantic search")
             clearSemanticSearch()
             return
         }
@@ -284,27 +280,21 @@ final class AppState: ObservableObject {
 
         // 3. If not using AI search, clear AI results
         if !useAISearch {
-            print("   ↳ Not using AI search, clearing semantic results")
             clearSemanticSearch()
             return
         }
 
         // 4. If only "/" is entered (no actual query), clear AI results
         if actualQuery.isEmpty {
-            print("   ↳ Only '/' entered, clearing semantic results")
             clearSemanticSearch()
             return
         }
 
         // 5. If using AI search (/xxx), trigger semantic search with debounce
         if isSemanticSearchAvailable, !actualQuery.trimmingCharacters(in: .whitespaces).isEmpty {
-            print("   ↳ AI search mode - debouncing for 2 seconds...")
-            print("   ↳ Query to search: '\(actualQuery)'")
-
             // Debounce: wait 2 seconds before triggering AI search
             debounceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
                 guard let self = self else { return }
-                print("\n⏰ Debounce timer fired! Triggering AI search for: '\(actualQuery)'")
                 Task { @MainActor in
                     self.triggerSemanticSearch(query: actualQuery)
                 }
@@ -339,8 +329,6 @@ final class AppState: ObservableObject {
     }
 
     private func clearSemanticSearch() {
-        print("   🧹 Clearing semantic search")
-
         // Cancel any debounce timer
         debounceTimer?.invalidate()
         debounceTimer = nil
@@ -349,35 +337,26 @@ final class AppState: ObservableObject {
         semanticSearchTask?.cancel()
 
         // Clear the searching state
-        if isSemanticSearching {
-            print("   ↳ Stopping search in progress")
-            isSemanticSearching = false
-        }
+        isSemanticSearching = false
 
         // Clear results
         if !semanticSearchResults.isEmpty {
-            print("   ↳ Clearing \(semanticSearchResults.count) previous results")
             semanticSearchResults = []
         }
     }
 
     private func triggerSemanticSearch(query: String) {
-        print("\n🚀 Triggering semantic search for: '\(query)'")
-
         // Cancel any ongoing search
         semanticSearchTask?.cancel()
 
         isSemanticSearching = true
-        print("   ↳ Setting isSemanticSearching = true")
 
         semanticSearchTask = Task { @MainActor in
             guard let service = semanticSearchService as? SemanticSearchService else {
-                print("   ❌ Semantic search service not available")
                 isSemanticSearching = false
                 return
             }
 
-            print("   ⏳ Calling AI service...")
             let results = await service.searchApps(apps, query: query)
 
             // Check if search query hasn't changed
@@ -385,31 +364,17 @@ final class AppState: ObservableObject {
                 ? String(self.searchQuery.dropFirst())
                 : self.searchQuery
 
-            print("   📊 Got \(results.count) results from AI")
-            print("   🔍 Current query: '\(currentQuery)', Search query: '\(query)'")
-
             if currentQuery == query && !Task.isCancelled {
-                print("   ✅ Query matches, updating results")
                 self.updateSemanticResults(results.map { $0.app })
-            } else {
-                print("   ⚠️ Query changed or task cancelled, discarding results")
             }
 
             isSemanticSearching = false
-            print("   ↳ Setting isSemanticSearching = false")
         }
     }
 
     @Published private(set) var semanticSearchResults: [DiscoveredApp] = []
 
     private func updateSemanticResults(_ results: [DiscoveredApp]) {
-        print("   💾 Updating semantic results: \(results.count) apps")
-        for (index, app) in results.prefix(5).enumerated() {
-            print("      \(index + 1). \(app.name)")
-        }
-        if results.count > 5 {
-            print("      ... and \(results.count - 5) more")
-        }
         semanticSearchResults = results
         objectWillChange.send()
     }
@@ -577,21 +542,6 @@ final class AppState: ObservableObject {
             let insertIndex = min(index, layout.count)
             for (offset, identifier) in folder.appIdentifiers.enumerated() {
                 layout.insert(.app(identifier), at: insertIndex + offset)
-            }
-        }
-    }
-
-    func dissolveFolderIfNeeded(_ folderID: String) {
-        modifyLayout { layout in
-            guard let index = layout.firstIndex(where: { $0.id == folderID }),
-                  var folder = layout[index].folder else { return }
-            folder.appIdentifiers = folder.appIdentifiers.filter { appsByIdentifier[$0] != nil }
-            if folder.appIdentifiers.count >= 2 {
-                layout[index].folder = folder
-            } else if let single = folder.appIdentifiers.first {
-                layout[index] = .app(single)
-            } else {
-                layout.remove(at: index)
             }
         }
     }
