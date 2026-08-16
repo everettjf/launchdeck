@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct StartMyAppApp: App {
+struct LaunchDeckApp: App {
     @StateObject private var preferences: AppPreferences
     @StateObject private var appState: AppState
     @StateObject private var shortcutCoordinator: ShortcutCoordinator
@@ -76,7 +76,7 @@ struct StartMyAppApp: App {
         sysctlbyname("hw.model", &model, &size, nil, 0)
         deviceModel = String(cString: model)
 
-        let subject = "Feedback-StartMyApp"
+        let subject = "Feedback-LaunchDeck"
         let body = """
 
 

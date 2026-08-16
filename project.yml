@@ -1,4 +1,4 @@
-name: StartMyApp
+name: LaunchDeck
 options:
   deploymentTarget:
     macOS: "26.0"
@@ -8,11 +8,11 @@ packages:
     path: Core
 
 targets:
-  StartMyApp:
+  LaunchDeck:
     type: application
     platform: macOS
     sources:
-      - path: StartMyApp
+      - path: LaunchDeck
     dependencies:
       - package: LaunchDeckCore
         product: LaunchDeckCore
@@ -40,6 +40,7 @@ targets:
         ENABLE_RESOURCE_ACCESS_PRINTING: NO
         ENABLE_RESOURCE_ACCESS_USB: NO
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: LaunchDeck
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
@@ -57,13 +58,13 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
 
-# Explicit scheme: the app target shares the project name "StartMyApp", which
+# Explicit scheme: the app target shares the project name "LaunchDeck", which
 # makes XcodeGen's auto-scheme generation skip it.
 schemes:
-  StartMyApp:
+  LaunchDeck:
     build:
       targets:
-        StartMyApp: all
+        LaunchDeck: all
     run:
       config: Debug
     profile:

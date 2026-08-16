@@ -69,7 +69,7 @@ struct SettingsView: View {
             } header: {
                 Text("Quick Access")
             } footer: {
-                Text("Use the global shortcut to quickly open StartMyApp from anywhere.")
+                Text("Use the global shortcut to quickly open LaunchDeck from anywhere.")
                     .font(.caption)
             }
 

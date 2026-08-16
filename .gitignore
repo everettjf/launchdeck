@@ -1,5 +1,5 @@
-# XcodeGen generates StartMyApp.xcodeproj from project.yml — do not commit it
-StartMyApp.xcodeproj/
+# XcodeGen generates LaunchDeck.xcodeproj from project.yml — do not commit it
+LaunchDeck.xcodeproj/
 
 # SwiftPM build artifacts for the local Core package
 Core/.build/

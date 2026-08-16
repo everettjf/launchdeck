@@ -6,7 +6,7 @@ let appCount = arguments.firstIndex(of: "--apps").flatMap { index in
     arguments.indices.contains(index + 1) ? Int(arguments[index + 1]) : nil
 } ?? 1_000
 
-let root = FileManager.default.temporaryDirectory.appendingPathComponent("StartMyAppBenchmark-\(UUID().uuidString)")
+let root = FileManager.default.temporaryDirectory.appendingPathComponent("LaunchDeckBenchmark-\(UUID().uuidString)")
 defer { try? FileManager.default.removeItem(at: root) }
 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 

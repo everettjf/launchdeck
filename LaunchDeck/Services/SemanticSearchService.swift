@@ -3,7 +3,7 @@ import FoundationModels
 import OSLog
 import LaunchDeckCore
 
-private nonisolated let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "StartMyApp", category: "SemanticSearch")
+private nonisolated let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "LaunchDeck", category: "SemanticSearch")
 
 // Define the output structure using @Generable
 @Generable

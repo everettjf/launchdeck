@@ -66,7 +66,7 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
         guard statusItem != nil else { return }
         let menu = NSMenu()
 
-        menu.addItem(makeMenuItem(title: "Open StartMyApp", action: #selector(openMainWindow)))
+        menu.addItem(makeMenuItem(title: "Open \(Bundle.main.appDisplayName)", action: #selector(openMainWindow)))
         menu.addItem(.separator())
 
         let shortcutItem = makeMenuItem(title: "Enable Global Shortcut", action: #selector(toggleShortcut))

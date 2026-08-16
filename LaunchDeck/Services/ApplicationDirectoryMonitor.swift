@@ -3,14 +3,14 @@ import CoreServices
 import OSLog
 import LaunchDeckCore
 
-private nonisolated let logger = Logger(subsystem: "StartMyApp", category: "DirectoryMonitor")
+private nonisolated let logger = Logger(subsystem: "LaunchDeck", category: "DirectoryMonitor")
 
 /// Monitors application directories for changes using FSEvents API.
 /// nonisolated: FSEvents callbacks arrive on a private dispatch queue, and the
 /// monitor's state is only touched from that queue or the main thread.
 nonisolated final class ApplicationDirectoryMonitor {
     private var eventStream: FSEventStreamRef?
-    private let queue = DispatchQueue(label: "com.startmyapp.directorymonitor", qos: .utility)
+    private let queue = DispatchQueue(label: "com.launchdeck.directorymonitor", qos: .utility)
     private let callback: ([String]) -> Void
     private var debounceWorkItem: DispatchWorkItem?
     private var pendingChangedAppPaths = Set<String>()
