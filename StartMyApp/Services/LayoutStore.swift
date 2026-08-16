@@ -1,4 +1,5 @@
 import Foundation
+import LaunchDeckCore
 
 final class LayoutStore {
     private let defaults: UserDefaults

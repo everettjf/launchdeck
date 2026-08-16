@@ -3,12 +3,19 @@ options:
   deploymentTarget:
     macOS: "26.0"
 
+packages:
+  LaunchDeckCore:
+    path: Core
+
 targets:
   StartMyApp:
     type: application
     platform: macOS
     sources:
       - path: StartMyApp
+    dependencies:
+      - package: LaunchDeckCore
+        product: LaunchDeckCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.xnu.startmyapp

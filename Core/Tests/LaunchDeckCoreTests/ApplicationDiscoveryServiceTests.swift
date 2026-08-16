@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import StartMyAppIndex
+@testable import LaunchDeckCore
 
 struct ApplicationDiscoveryServiceTests {
     @Test("Nested file events resolve to their application bundle")

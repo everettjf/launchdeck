@@ -1,4 +1,5 @@
 import Foundation
+import LaunchDeckCore
 
 final class RecentsStore {
     let maxCount: Int

@@ -106,7 +106,7 @@ public final class ApplicationDiscoveryService {
         return Array(unique.values)
     }
 
-    static func applicationBundlePath(from eventPath: String) -> String? {
+    public static func applicationBundlePath(from eventPath: String) -> String? {
         let components = URL(fileURLWithPath: eventPath).pathComponents
         guard let index = components.firstIndex(where: { $0.hasSuffix(".app") }) else { return nil }
         let path = NSString.path(withComponents: Array(components.prefix(through: index)))

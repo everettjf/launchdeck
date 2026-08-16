@@ -1,6 +1,7 @@
 import Foundation
 import CoreServices
 import OSLog
+import LaunchDeckCore
 
 private nonisolated let logger = Logger(subsystem: "StartMyApp", category: "DirectoryMonitor")
 

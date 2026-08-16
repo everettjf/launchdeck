@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import UniformTypeIdentifiers
+import LaunchDeckCore
 
 struct ApplicationsGridView: View {
     @EnvironmentObject private var appState: AppState

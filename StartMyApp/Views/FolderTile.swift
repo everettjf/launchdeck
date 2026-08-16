@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import LaunchDeckCore
 
 struct FolderTile: View {
     let itemID: String

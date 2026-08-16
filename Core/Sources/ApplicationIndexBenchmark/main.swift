@@ -1,5 +1,5 @@
 import Foundation
-import StartMyAppIndex
+import LaunchDeckCore
 
 let arguments = CommandLine.arguments
 let appCount = arguments.firstIndex(of: "--apps").flatMap { index in

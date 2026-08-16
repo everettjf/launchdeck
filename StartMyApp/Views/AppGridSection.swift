@@ -1,4 +1,5 @@
 import SwiftUI
+import LaunchDeckCore
 
 struct AppGridSection<HeaderTrailing: View>: View {
     let title: String

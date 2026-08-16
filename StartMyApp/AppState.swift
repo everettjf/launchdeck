@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import LaunchDeckCore
 import SwiftUI
 
 @MainActor
@@ -126,37 +127,7 @@ final class AppState: ObservableObject {
     }
 
     private func syncLayoutWithDiscoveredApps() {
-        let knownIdentifiers = Set(appsByIdentifier.keys)
-        var updatedLayout: [AppCollectionItem] = []
-
-        for item in layout {
-            switch item.kind {
-            case .app:
-                guard let identifier = item.appIdentifier, knownIdentifiers.contains(identifier) else { continue }
-                updatedLayout.append(.app(identifier))
-            case .folder:
-                guard var folder = item.folder else { continue }
-                folder.appIdentifiers = folder.appIdentifiers.filter { knownIdentifiers.contains($0) }
-                if folder.appIdentifiers.count >= 2 {
-                    var folderItem = item
-                    folderItem.folder = folder
-                    updatedLayout.append(folderItem)
-                } else if let singleIdentifier = folder.appIdentifiers.first {
-                    updatedLayout.append(.app(singleIdentifier))
-                }
-            }
-        }
-
-        let existingIdentifiers = Set(updatedLayout.flatMap { $0.containedAppIdentifiers })
-        let missingIdentifiers = knownIdentifiers.subtracting(existingIdentifiers)
-        let sortedMissing = missingIdentifiers
-            .compactMap { appsByIdentifier[$0] }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-        for app in sortedMissing {
-            updatedLayout.append(.app(app.identifier))
-        }
-
+        let updatedLayout = LayoutSynchronizer.sync(layout: layout, with: apps)
         layout = updatedLayout
         layoutStore.save(updatedLayout)
     }
@@ -229,26 +200,7 @@ final class AppState: ObservableObject {
     }
 
     private func updateRecents(with app: DiscoveredApp) {
-        var updated = recents
-
-        if let index = updated.firstIndex(where: { $0.identifier == app.identifier }) {
-            var launch = updated.remove(at: index)
-            launch.lastLaunch = Date()
-            launch.launchCount += 1
-            updated.insert(launch, at: 0)
-        } else {
-            let launch = RecentLaunch(identifier: app.identifier,
-                                      displayName: app.name,
-                                      path: app.path,
-                                      lastLaunch: Date(),
-                                      launchCount: 1)
-            updated.insert(launch, at: 0)
-        }
-
-        if updated.count > recentsStore.maxCount {
-            updated = Array(updated.prefix(recentsStore.maxCount))
-        }
-
+        let updated = RecentLaunchList.recordingLaunch(of: app, in: recents, maxCount: recentsStore.maxCount)
         recents = updated
         recentsStore.save(updated)
     }
@@ -323,9 +275,8 @@ final class AppState: ObservableObject {
         }
 
         // Otherwise, use keyword-based search
-        let term = actualQuery.lowercased()
-        let matches = apps.filter { $0.searchableText.contains(term) }
-        return matches.sorted { searchRank(for: $0) > searchRank(for: $1) }
+        return SearchRanking.filter(apps, matching: actualQuery,
+                                    favorites: favorites, recents: recents, layout: layout)
     }
 
     private func clearSemanticSearch() {
@@ -524,10 +475,8 @@ final class AppState: ObservableObject {
             guard let index = layout.firstIndex(where: { $0.id == folderID }),
                   var folder = layout[index].folder else { return }
             folder.appIdentifiers.removeAll { $0 == appID }
-            if folder.appIdentifiers.count >= 2 {
-                layout[index].folder = folder
-            } else if let single = folder.appIdentifiers.first {
-                layout[index] = .app(single)
+            if let dissolved = FolderDissolution.item(for: folder, reusing: layout[index]) {
+                layout[index] = dissolved
             } else {
                 layout.remove(at: index)
             }
@@ -550,29 +499,9 @@ final class AppState: ObservableObject {
         layout.flatMap { $0.containedAppIdentifiers }
     }
 
-    private func searchRank(for app: DiscoveredApp) -> Int {
-        var weight = 0
-        if favorites.contains(app.identifier) {
-            weight += 20
-        }
-        if let firstRecent = recents.first, firstRecent.identifier == app.identifier {
-            weight += 10
-        }
-        if let layoutIndex = layout.firstIndex(where: { $0.containedAppIdentifiers.contains(app.identifier) }) {
-            weight += max(0, 15 - layoutIndex)
-        }
-        if !app.isSystemApp {
-            weight += 1
-        }
-        return weight
-    }
-
     private func defaultFolderName(suggesting identifiers: [String]) -> String {
-        let categories = identifiers.compactMap { appsByIdentifier[$0]?.category }
-        if let common = categories.mostCommonElement() {
-            return common
-        }
-        return NSLocalizedString("New Folder", comment: "Default folder name")
+        FolderNaming.suggestedName(forAppIdentifiers: identifiers, appsByIdentifier: appsByIdentifier)
+            ?? NSLocalizedString("New Folder", comment: "Default folder name")
     }
 
     private func modifyLayout(_ modify: (inout [AppCollectionItem]) -> Void) {
@@ -583,58 +512,15 @@ final class AppState: ObservableObject {
     }
 
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {
-        let allApps = apps
-        let recentsLookup = Dictionary(uniqueKeysWithValues: recents.map { ($0.identifier, $0) })
-
         switch option {
         case .custom:
             return orderedIdentifiers()
         case .alphabetical:
-            return allApps
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                .map { $0.identifier }
+            return AppSorting.alphabetical(apps)
         case .mostLaunched:
-            return allApps
-                .sorted { first, second in
-                    let firstCount = recentsLookup[first.identifier]?.launchCount ?? 0
-                    let secondCount = recentsLookup[second.identifier]?.launchCount ?? 0
-                    if firstCount == secondCount {
-                        return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
-                    }
-                    return firstCount > secondCount
-                }
-                .map { $0.identifier }
+            return AppSorting.mostLaunched(apps, recents: recents)
         case .recentlyLaunched:
-            return allApps
-                .sorted { first, second in
-                    let firstDate = recentsLookup[first.identifier]?.lastLaunch
-                    let secondDate = recentsLookup[second.identifier]?.lastLaunch
-                    switch (firstDate, secondDate) {
-                    case let (lhs?, rhs?):
-                        if lhs == rhs {
-                            return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
-                        }
-                        return lhs > rhs
-                    case (_?, nil):
-                        return true
-                    case (nil, _?):
-                        return false
-                    case (nil, nil):
-                        return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
-                    }
-                }
-                .map { $0.identifier }
+            return AppSorting.recentlyLaunched(apps, recents: recents)
         }
-    }
-}
-
-private extension Array where Element == String {
-    func mostCommonElement() -> String? {
-        guard !isEmpty else { return nil }
-        var counts: [String: Int] = [:]
-        for element in self {
-            counts[element, default: 0] += 1
-        }
-        return counts.max { $0.value < $1.value }?.key
     }
 }

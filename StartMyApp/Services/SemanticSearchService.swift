@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import OSLog
+import LaunchDeckCore
 
 private nonisolated let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "StartMyApp", category: "SemanticSearch")
 
