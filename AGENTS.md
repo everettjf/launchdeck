@@ -1,6 +1,6 @@
 # Foundation Models Guide for LaunchDeck
 
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.com/invite/eGzEaP6TzR)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eGzEaP6TzR)
 
 This document tracks how LaunchDeck (formerly StartMyApp) integrates Apple Foundation Models (Apple Intelligence), with a focus on semantic search and future extensions.
 

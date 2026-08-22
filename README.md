@@ -1,10 +1,12 @@
 # LaunchDeck
 
+Repository: <https://github.com/everettjf/startmyapp>
+
 Formerly StartMyApp.
 
 [https://startmy.app](https://startmy.app)
 
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.com/invite/eGzEaP6TzR)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eGzEaP6TzR)
 
 A modern macOS app launcher focused on fast discovery, organization, and launch.
 
