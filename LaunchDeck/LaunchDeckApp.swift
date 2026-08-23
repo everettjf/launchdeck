@@ -52,7 +52,7 @@ struct LaunchDeckApp: App {
                     sendSupportEmail()
                 }
                 Button("\(Bundle.main.appDisplayName) Help") {
-                    if let url = URL(string: "https://startmy.app") {
+                    if let url = URL(string: "https://xnu.app/launchdeck/") {
                         NSWorkspace.shared.open(url)
                     }
                 }

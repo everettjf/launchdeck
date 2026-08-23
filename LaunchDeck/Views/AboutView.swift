@@ -32,10 +32,10 @@ struct AboutView: View {
             Divider()
 
             VStack(spacing: 8) {
-                if let url = URL(string: "https://startmy.app") {
+                if let url = URL(string: "https://xnu.app/launchdeck/") {
                     Link("Support & Feedback", destination: url)
                 }
-                if let url = URL(string: "https://startmy.app/privacy") {
+                if let url = URL(string: "https://xnu.app/launchdeck/privacy/") {
                     Link("Privacy Policy", destination: url)
                 }
             }
