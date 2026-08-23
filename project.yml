@@ -16,6 +16,19 @@ targets:
     dependencies:
       - package: LaunchDeckCore
         product: LaunchDeckCore
+    info:
+      path: LaunchDeck/Info.plist
+      properties:
+        CFBundleDisplayName: LaunchDeck
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        ITSAppUsesNonExemptEncryption: false
+        NSHumanReadableCopyright: ""
+        CFBundleURLTypes:
+          - CFBundleURLName: com.everettjf.launchdeck.recipe
+            CFBundleURLSchemes:
+              - launchdeck
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.everettjf.launchdeck

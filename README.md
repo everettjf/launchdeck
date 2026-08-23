@@ -22,6 +22,7 @@ LaunchDeck is configured for direct Developer ID distribution rather than the Ma
 - Optional structured intent search (type `/`) that selects only validated local targets and registered actions
 - Configurable local document/project roots with dependency, build, hidden, and sensitive-directory exclusions
 - Deterministic local recipes with create/edit/import/export and step-by-step action previews
+- Declarative manifest v1 extensions with explicit permissions and no arbitrary code execution
 - Recently launched and most-launched sorting, with hidden apps support
 - Menu bar entry + global hotkey to summon instantly
 
@@ -79,6 +80,8 @@ The script increments the latest semantic-version patch, updates the Xcode marke
 - Search roots for local files, folders, Git repositories, and Xcode projects
 - Local recipes assembled from apps, projects, Terminal locations, and approved Shortcuts
 - Recipe templates, reusable variables, and ordered step editing
+- Privacy-first clipboard history, snippets, window actions, editable Quicklinks, and local learning
+- Declarative extension install/uninstall with permission summaries
 - Local launch, action, and recent-document history reset
 
 ## Privacy and action safety

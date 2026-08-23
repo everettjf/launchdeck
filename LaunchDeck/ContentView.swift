@@ -15,11 +15,14 @@ struct ContentView: View {
     @State private var newFolderName: String = ""
     @State private var searchSelection = SearchSelection()
     @State private var pendingRecipe: Recipe?
+    @State private var editingRecipe: Recipe?
+    @State private var actionPanelItem: SearchItem?
+    @State private var selectedKinds = Set(SearchItemKind.allCases)
 
     private var unifiedResults: [SearchItem] {
         let query = searchText.hasPrefix("/") ? String(searchText.dropFirst()) : searchText
         guard !query.isEmpty else { return [] }
-        let local = appState.searchItems(matching: query)
+        let local = appState.searchItems(matching: query).filter { selectedKinds.contains($0.kind) }
         guard searchText.hasPrefix("/"), !appState.intentResults.isEmpty else { return local }
         let recommended = appState.intentResults.compactMap { appState.searchItem(identifier: $0.targetIdentifier) }
         let IDs = Set(recommended.map(\.id))
@@ -71,10 +74,35 @@ struct ContentView: View {
                 run(recipe, values: values)
             }
         }
+        .sheet(item: $editingRecipe) { recipe in
+            RecipeEditorView(recipe: recipe, applications: appState.allApps(),
+                             approvedShortcuts: preferences.approvedShortcuts) { updated in
+                (try? appState.recipeStore.save(updated)) != nil
+            }
+        }
+        .sheet(item: $actionPanelItem) { item in
+            SearchActionPanel(
+                item: item,
+                actions: appState.contextualActions(for: item),
+                onRun: { action in
+                    actionPanelItem = nil
+                    appState.perform(action, on: item)
+                }
+            )
+        }
         .alert("Action Failed", isPresented: actionErrorBinding) {
             Button("OK") { appState.dismissActionError() }
         } message: {
             Text(appState.actionError ?? "")
+        }
+        .onOpenURL { url in
+            guard let id = RecipeTrigger.recipeID(from: url),
+                  let recipe = appState.recipeStore.recipes.first(where: { $0.id == id }) else {
+                appState.actionController.presentError("The Recipe link is invalid or no longer installed.")
+                return
+            }
+            if recipe.variables.isEmpty { run(recipe, values: [:]) }
+            else { pendingRecipe = recipe }
         }
     }
 
@@ -116,6 +144,7 @@ struct ContentView: View {
                             }
                             .padding(.top, 32)
                         } else {
+                            SearchKindFilterBar(selectedKinds: $selectedKinds)
                             UnifiedSearchResultsView(items: unifiedResults,
                                                      selectedIdentifier: searchSelection.selectedIdentifier,
                                                      reason: appState.intentDetail,
@@ -214,6 +243,11 @@ struct ContentView: View {
                     } label: {
                         Label("New Folder", systemImage: "folder.badge.plus")
                     }
+                    Button {
+                        editingRecipe = Recipe(name: "New Recipe", steps: [])
+                    } label: {
+                        Label("New Recipe", systemImage: "list.bullet.rectangle")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -242,6 +276,18 @@ struct ContentView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
+            if !appState.recentSearchQueries.isEmpty {
+                Menu {
+                    ForEach(appState.recentSearchQueries, id: \.self) { query in
+                        Button(query) { searchText = query }
+                    }
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityLabel("Recent searches")
+            }
             TextField(searchPlaceholder, text: $searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: 16, weight: .medium))
@@ -253,6 +299,25 @@ struct ContentView: View {
                 }
                 .onKeyPress(.downArrow) {
                     searchSelection.move(by: 1, items: unifiedResults)
+                    return .handled
+                }
+                .onKeyPress(.space) {
+                    guard let item = searchSelection.selectedItem(in: unifiedResults),
+                          appState.contextualActions(for: item).contains(.quickLook) else { return .ignored }
+                    appState.perform(.quickLook, on: item)
+                    return .handled
+                }
+                .onKeyPress(.return, phases: .down) { press in
+                    guard press.modifiers.contains(.command),
+                          let item = searchSelection.selectedItem(in: unifiedResults),
+                          appState.contextualActions(for: item).contains(.reveal) else { return .ignored }
+                    appState.perform(.reveal, on: item)
+                    return .handled
+                }
+                .onKeyPress("k", phases: .down) { press in
+                    guard press.modifiers.contains(.command),
+                          let item = searchSelection.selectedItem(in: unifiedResults) else { return .ignored }
+                    actionPanelItem = item
                     return .handled
                 }
             if !searchText.isEmpty {
@@ -413,7 +478,83 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
         case .setting: "gearshape"
         case .shortcut: "command"
         case .recipe: "list.bullet.rectangle"
+        case .calculation: "function"
+        case .quicklink: "link"
+        case .emoji: "face.smiling"
+        case .clipboard: "clipboard"
+        case .snippet: "text.quote"
+        case .windowAction: "macwindow"
+        case .extensionCommand: "puzzlepiece.extension"
         }
+    }
+}
+
+private struct SearchKindFilterBar: View {
+    @Binding var selectedKinds: Set<SearchItemKind>
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Button("All") { selectedKinds = Set(SearchItemKind.allCases) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(selectedKinds.count == SearchItemKind.allCases.count ? .accentColor : .secondary)
+                ForEach(SearchItemKind.allCases, id: \.self) { kind in
+                    Button(kind.rawValue.capitalized) { toggle(kind) }
+                        .buttonStyle(.bordered)
+                        .tint(selectedKinds.contains(kind) ? .accentColor : .secondary)
+                        .accessibilityValue(selectedKinds.contains(kind) ? "Included" : "Excluded")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Search categories")
+    }
+
+    private func toggle(_ kind: SearchItemKind) {
+        if selectedKinds == Set(SearchItemKind.allCases) {
+            selectedKinds = [kind]
+        } else if selectedKinds.contains(kind) {
+            selectedKinds.remove(kind)
+            if selectedKinds.isEmpty { selectedKinds = Set(SearchItemKind.allCases) }
+        } else {
+            selectedKinds.insert(kind)
+        }
+    }
+}
+
+private struct SearchActionPanel: View {
+    @Environment(\.dismiss) private var dismiss
+    let item: SearchItem
+    let actions: [SearchContextAction]
+    let onRun: (SearchContextAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(item.title).font(.title2.weight(.semibold))
+            Text(item.subtitle ?? item.kind.rawValue.capitalized).foregroundStyle(.secondary)
+            if actions.isEmpty {
+                ContentUnavailableView("No Available Actions", systemImage: "bolt.slash")
+            } else {
+                List(actions) { action in
+                    Button { onRun(action) } label: {
+                        HStack {
+                            Label(action.title, systemImage: action.systemImage)
+                            Spacer()
+                            if let hint = action.keyboardHint {
+                                Text(hint).foregroundStyle(.secondary)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            HStack { Spacer(); Button("Cancel", role: .cancel) { dismiss() } }
+        }
+        .padding(24)
+        .frame(width: 440, height: 360)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Actions for \(item.title)")
     }
 }
 

@@ -20,6 +20,7 @@ public struct AppCandidate: Identifiable, Hashable, Sendable {
 
 public enum SearchItemKind: String, CaseIterable, Codable, Hashable, Sendable {
     case application, file, folder, project, action, setting, shortcut, recipe
+    case calculation, quicklink, emoji, clipboard, snippet, windowAction, extensionCommand
 }
 
 public enum SearchItemTarget: Codable, Hashable, Sendable {
@@ -31,6 +32,9 @@ public enum SearchItemTarget: Codable, Hashable, Sendable {
     case systemSetting(identifier: String)
     case shortcut(name: String)
     case recipe(identifier: UUID)
+    case copyText(String)
+    case url(URL)
+    case systemCommand(String)
 }
 
 public struct SearchItem: Identifiable, Codable, Hashable, Sendable {

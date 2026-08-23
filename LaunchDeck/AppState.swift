@@ -14,11 +14,16 @@ final class AppState: ObservableObject {
     @Published private(set) var favorites: Set<String>
     @Published private(set) var recents: [RecentLaunch]
     @Published private(set) var indexedItems: [SearchItem] = []
+    @Published private(set) var recentSearchQueries: [String] = []
 
     let layoutController: LayoutController
     let searchController: SemanticSearchController
     let actionController: ActionController
     let recipeStore: RecipeStore
+    let quicklinkStore: QuicklinkStore
+    let clipboardStore: ClipboardStore
+    let snippetStore: SnippetStore
+    let extensionStore: ExtensionStore
 
     var totalAppCount: Int { apps.count }
 
@@ -44,6 +49,8 @@ final class AppState: ObservableObject {
     private let recentsStore: RecentsStore
     private let localIndexStore: LocalIndexStore
     private let recentDocumentStore: RecentDocumentStore
+    private let searchLearningStore: SearchLearningStore
+    private var clipboardMonitor: ClipboardMonitor?
     private nonisolated let discoveryService: ApplicationDiscoveryService
     private let preferences: AppPreferences
     private let focusPublisher = PassthroughSubject<Void, Never>()
@@ -77,6 +84,7 @@ final class AppState: ObservableObject {
         self.discoveryService = discoveryService
         self.localIndexStore = localIndexStore
         self.recentDocumentStore = recentDocumentStore
+        self.searchLearningStore = SearchLearningStore()
         self.favorites = favoritesStore.load()
         self.recents = recentsStore.load()
 
@@ -84,10 +92,19 @@ final class AppState: ObservableObject {
         let searchController = SemanticSearchController()
         let actionController = ActionController()
         let recipeStore = RecipeStore()
+        let quicklinkStore = QuicklinkStore()
+        let clipboardStore = ClipboardStore()
+        let snippetStore = SnippetStore()
+        let extensionStore = ExtensionStore()
         self.layoutController = layoutController
         self.searchController = searchController
         self.actionController = actionController
         self.recipeStore = recipeStore
+        self.quicklinkStore = quicklinkStore
+        self.clipboardStore = clipboardStore
+        self.snippetStore = snippetStore
+        self.extensionStore = extensionStore
+        self.recentSearchQueries = searchLearningStore.snapshot.recentQueries
 
         // Forward controller changes so views observing AppState stay live
         layoutController.objectWillChange
@@ -102,6 +119,12 @@ final class AppState: ObservableObject {
         recipeStore.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        quicklinkStore.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        clipboardStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &cancellables)
+        snippetStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &cancellables)
+        extensionStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &cancellables)
         recipeStore.$recipes
             .dropFirst()
             .sink { [weak self] recipes in self?.rebuildUnifiedIndex(recipes: recipes) }
@@ -130,6 +153,8 @@ final class AppState: ObservableObject {
             self?.recordRecentDocument(path)
         }
         searchController.initialize()
+        clipboardMonitor = ClipboardMonitor(store: clipboardStore, preferences: preferences)
+        clipboardMonitor?.start()
         refreshLocalContent()
     }
 
@@ -292,12 +317,59 @@ final class AppState: ObservableObject {
     }
 
     func searchItems(matching query: String, limit: Int = 80) -> [SearchItem] {
-        unifiedSearchIndex.search(query, kindBoosts: [.application: 0.04, .project: 0.03], limit: limit).map(\.item)
+        let utilities = UtilitySearchProvider.results(for: query, quicklinks: quicklinkStore.quicklinks)
+            + desktopUtilityItems(matching: query)
+            + extensionStore.searchItems(matching: query)
+        let ranked = unifiedSearchIndex.search(query,
+                                               kindBoosts: [.application: 0.04, .project: 0.03],
+                                               itemBoosts: searchLearningStore.boosts(for: query),
+                                               limit: limit).map(\.item)
+        return Array((utilities + ranked).prefix(limit))
     }
 
     func searchItem(identifier: String) -> SearchItem? { searchItemsByIdentifier[identifier] }
 
+    func contextualActions(for item: SearchItem) -> [SearchContextAction] {
+        SearchContextActionCatalog.actions(for: item)
+    }
+
+    func perform(_ contextAction: SearchContextAction, on item: SearchItem) {
+        switch contextAction {
+        case .open:
+            perform(item)
+        case .reveal:
+            reveal(item)
+        case .quickLook:
+            guard let path = item.fileSystemPath else { return }
+            QuickLookCoordinator.shared.preview(path: path)
+        case .copyPath:
+            guard let path = item.fileSystemPath else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(path, forType: .string)
+        case .openTerminal:
+            guard let path = item.fileSystemPath else { return }
+            var isDirectory: ObjCBool = false
+            let directory = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+                ? path : URL(fileURLWithPath: path).deletingLastPathComponent().path
+            requestAction(.openTerminal(directory: directory))
+        }
+    }
+
+    private func reveal(_ item: SearchItem) {
+        switch item.target {
+        case .application(let identifier, _):
+            guard let app = appsByIdentifier[identifier] else { return }
+            requestAction(.revealApplication(identifier: identifier, name: app.name))
+        default:
+            guard let path = item.fileSystemPath else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        }
+    }
+
     func perform(_ item: SearchItem) {
+        let learningQuery = searchQuery.hasPrefix("/") ? String(searchQuery.dropFirst()) : searchQuery
+        searchLearningStore.record(query: learningQuery, itemID: item.id)
+        recentSearchQueries = searchLearningStore.snapshot.recentQueries
         if let recommendation = intentResults.first(where: { $0.targetIdentifier == item.id }) {
             let appName: String?
             if case .application(let identifier, _) = item.target { appName = appsByIdentifier[identifier]?.name }
@@ -334,6 +406,15 @@ final class AppState: ObservableObject {
         case .shortcut(let name): action = .runShortcut(name: name)
         case .recipe(let identifier):
             action = recipeStore.recipes.first(where: { $0.id == identifier }).map { .runRecipe(identifier: $0.id, name: $0.name, steps: $0.steps) }
+        case .copyText(let value):
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(value, forType: .string)
+            action = nil
+        case .url(let url): action = .openURL(url)
+        case .systemCommand(let identifier):
+            if let command = DesktopWindowCommand(rawValue: identifier),
+               let error = DesktopWindowController.perform(command) { actionController.presentError(error) }
+            action = nil
         }
         if let action { requestAction(action) }
     }
@@ -400,6 +481,9 @@ final class AppState: ObservableObject {
         actionController.clearHistory()
         try? recentDocumentStore.clear()
         try? localIndexStore.clear()
+        searchLearningStore.clear()
+        recentSearchQueries = []
+        clipboardStore.clear()
         indexedItems = []
         rebuildUnifiedIndex()
         refreshLocalContent()
@@ -541,6 +625,32 @@ final class AppState: ObservableObject {
         refreshLocalContent()
     }
 
+    private func desktopUtilityItems(matching query: String) -> [SearchItem] {
+        let query = query.lowercased()
+        var items: [SearchItem] = []
+        if preferences.clipboardEnabled {
+            items += clipboardStore.entries.filter { $0.text.lowercased().contains(query) }.prefix(20).map {
+                SearchItem(id: "clipboard:\($0.id)", kind: .clipboard,
+                           title: String($0.text.prefix(80)), subtitle: $0.copiedAt.formatted(),
+                           keywords: ["clipboard", "copy", "paste"], target: .copyText($0.text))
+            }
+        }
+        items += snippetStore.snippets.filter {
+            $0.name.lowercased().contains(query) || $0.keyword.lowercased().contains(query) || $0.content.lowercased().contains(query)
+        }.map {
+            SearchItem(id: "snippet:\($0.id)", kind: .snippet, title: $0.name, subtitle: $0.keyword,
+                       keywords: ["snippet", "text", $0.keyword],
+                       target: .copyText($0.expanded(clipboard: clipboardStore.entries.first?.text)))
+        }
+        items += DesktopWindowCommand.allCases.filter {
+            $0.title.lowercased().contains(query) || $0.rawValue.lowercased().contains(query)
+        }.map {
+            SearchItem(id: $0.rawValue, kind: .windowAction, title: $0.title,
+                       keywords: ["window", "move", "resize"], target: .systemCommand($0.rawValue))
+        }
+        return items
+    }
+
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {
         switch option {
         case .custom:
@@ -551,6 +661,15 @@ final class AppState: ObservableObject {
             return AppSorting.mostLaunched(apps, recents: recents)
         case .recentlyLaunched:
             return AppSorting.recentlyLaunched(apps, recents: recents)
+        }
+    }
+}
+
+private extension SearchItem {
+    var fileSystemPath: String? {
+        switch target {
+        case .application(_, let path), .file(let path), .folder(let path), .project(let path): path
+        case .registeredAction, .systemSetting, .shortcut, .recipe, .copyText, .url, .systemCommand: nil
         }
     }
 }

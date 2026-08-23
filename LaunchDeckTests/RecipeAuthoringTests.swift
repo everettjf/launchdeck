@@ -78,4 +78,20 @@ struct RecipeAuthoringTests {
             #expect(RecipeValidation.error(for: Recipe(name: template.name, steps: steps)) == nil)
         }
     }
+
+    @Test func typedVariablesRejectInvalidChoices() {
+        let variable = RecipeVariable(name: "mode", valueType: .choice, choices: ["debug", "release"])
+        let steps = [RecipeStep.openTerminal(directory: "{{mode}}")]
+        guard case .invalid(let errors) = RecipeVariableResolver.resolve(
+            steps: steps, variables: [variable], values: ["mode": "unsafe"]
+        ) else { Issue.record("Expected invalid typed variable"); return }
+        #expect(errors.count == 1)
+    }
+
+    @Test func dryRunReportsPermissionsWithoutExecution() {
+        let recipe = Recipe(name: "Safe", steps: [.runShortcut(name: "Export")])
+        let report = RecipeDryRun.inspect(recipe, values: [:], approvedShortcuts: ["Export"])
+        #expect(report.isReady)
+        #expect(report.permissions == ["Runs an approved Apple Shortcut"])
+    }
 }

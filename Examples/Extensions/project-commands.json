@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "com.launchdeck.examples.project-commands",
+  "name": "Project Commands",
+  "version": "1.0.0",
+  "permissions": [],
+  "commands": [
+    {
+      "id": "copy-test-command",
+      "name": "Copy Swift Test Command",
+      "kind": "staticText",
+      "value": "swift test",
+      "keyword": "test"
+    }
+  ]
+}

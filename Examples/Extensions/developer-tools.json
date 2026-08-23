@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "com.launchdeck.examples.developer-tools",
+  "name": "Developer Tools",
+  "version": "1.0.0",
+  "permissions": ["network"],
+  "commands": [
+    {
+      "id": "search-swift",
+      "name": "Search Swift Documentation",
+      "kind": "quicklink",
+      "value": "https://developer.apple.com/search/?q={query}",
+      "keyword": "swift"
+    },
+    {
+      "id": "open-github",
+      "name": "Open GitHub",
+      "kind": "openURL",
+      "value": "https://github.com/",
+      "keyword": null
+    }
+  ]
+}

@@ -1,8 +1,11 @@
 enum RecipeRunner {
     static func run(_ steps: [RecipeStep], execute: (RecipeStep) async -> Bool) async -> Bool {
+        var allSucceeded = true
         for step in steps {
-            guard await execute(step) else { return false }
+            let succeeded = await execute(step)
+            allSucceeded = allSucceeded && succeeded
+            if !succeeded, step.failurePolicy == .stop { return false }
         }
-        return true
+        return allSucceeded
     }
 }

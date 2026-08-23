@@ -2,23 +2,51 @@ import Foundation
 
 public struct UnifiedSearchIndex: Sendable {
     private let entries: [Entry]
+    private let tokenPostings: [String: [Int]]
 
     public init(items: [SearchItem]) {
-        entries = items.map(Entry.init)
+        let entries = items.map(Entry.init)
+        self.entries = entries
+        var postings: [String: [Int]] = [:]
+        for (index, entry) in entries.enumerated() {
+            for word in Set(entry.words) {
+                postings[word, default: []].append(index)
+            }
+        }
+        tokenPostings = postings
     }
 
     public func search(_ query: String, kindBoosts: [SearchItemKind: Double] = [:],
+                       itemBoosts: [String: Double] = [:],
                        limit: Int? = nil) -> [(item: SearchItem, score: Double)] {
         let query = Self.normalize(query)
         guard !query.isEmpty else { return [] }
-        let ranked = entries.compactMap { entry -> (SearchItem, Double)? in
+        let candidates = candidateEntries(for: query)
+        let ranked = candidates.compactMap { entry -> (SearchItem, Double)? in
             guard let score = entry.score(query) else { return nil }
-            return (entry.item, score + (kindBoosts[entry.item.kind] ?? 0))
+            return (entry.item, score + (kindBoosts[entry.item.kind] ?? 0) + (itemBoosts[entry.item.id] ?? 0))
         }.sorted {
             if $0.1 != $1.1 { return $0.1 > $1.1 }
             return $0.0.title.localizedCaseInsensitiveCompare($1.0.title) == .orderedAscending
         }
         return limit.map { Array(ranked.prefix($0)) } ?? ranked
+    }
+
+    /// Multi-token queries first use their complete words to avoid rescoring
+    /// unrelated kinds. If any token is unknown we fall back to the complete
+    /// index so typo-heavy queries retain the fuzzy matcher.
+    private func candidateEntries(for query: String) -> [Entry] {
+        let tokens = Self.words(query)
+        guard tokens.count > 1, let first = tokens.first, var indices = tokenPostings[first] else {
+            return entries
+        }
+        for token in tokens.dropFirst() {
+            guard let posting = tokenPostings[token] else { return entries }
+            let allowed = Set(posting)
+            indices.removeAll { !allowed.contains($0) }
+            if indices.isEmpty { return entries }
+        }
+        return indices.map { entries[$0] }
     }
 
     private struct Entry: Sendable {

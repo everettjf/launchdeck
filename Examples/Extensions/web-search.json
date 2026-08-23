@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "com.launchdeck.examples.web-search",
+  "name": "Web Search",
+  "version": "1.0.0",
+  "permissions": ["network"],
+  "commands": [
+    {
+      "id": "search-stack-overflow",
+      "name": "Search Stack Overflow",
+      "kind": "quicklink",
+      "value": "https://stackoverflow.com/search?q={query}",
+      "keyword": "so"
+    }
+  ]
+}

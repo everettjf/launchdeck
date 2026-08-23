@@ -8,6 +8,8 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var shortcutName = ""
     @State private var presentedRecipeSheet: RecipeSheet?
+    @State private var editingQuicklink: Quicklink?
+    @State private var editingSnippet: Snippet?
     @State private var operationError: String?
 
     var body: some View {
@@ -76,6 +78,74 @@ struct SettingsView: View {
               }
 
             Section {
+                ForEach(appState.extensionStore.manifests) { manifest in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(manifest.name)
+                            Text("v\(manifest.version) · \(manifest.commands.count) commands · \(manifest.permissions.map(\.rawValue).sorted().joined(separator: ", "))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Uninstall", role: .destructive) {
+                            do { try appState.extensionStore.uninstall(id: manifest.id) }
+                            catch { operationError = error.localizedDescription }
+                        }
+                    }
+                }
+                Button("Install Manifest…", action: installExtension)
+            } header: { Text("Extensions") }
+              footer: { Text("Manifest v1 is declarative and cannot execute arbitrary code. Declared permissions are shown before use.").font(.caption) }
+
+            Section {
+                Toggle("Enable Clipboard History", isOn: $preferences.clipboardEnabled)
+                if preferences.clipboardEnabled {
+                    Picker("Retention", selection: $preferences.clipboardRetentionHours) {
+                        Text("24 Hours").tag(24)
+                        Text("7 Days").tag(168)
+                        Text("30 Days").tag(720)
+                    }
+                    HStack {
+                        Text("\(appState.clipboardStore.entries.count) saved items").foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Clear Clipboard History", role: .destructive) { appState.clipboardStore.clear() }
+                    }
+                }
+            } header: { Text("Clipboard History") }
+              footer: { Text("Disabled by default. Text copied from supported password managers is excluded. Data remains on this Mac.").font(.caption) }
+
+            Section {
+                ForEach(appState.snippetStore.snippets) { snippet in
+                    HStack {
+                        VStack(alignment: .leading) { Text(snippet.name); Text(snippet.keyword).font(.caption).foregroundStyle(.secondary) }
+                        Spacer()
+                        Button("Edit") { editingSnippet = snippet }
+                        Button("Remove", role: .destructive) { appState.snippetStore.remove(id: snippet.id) }
+                    }
+                }
+                Button("New Snippet") { editingSnippet = Snippet(name: "New Snippet", keyword: "snippet", content: "") }
+            } header: { Text("Snippets") }
+              footer: { Text("Supports {date}, {time}, and {clipboard} placeholders.").font(.caption) }
+
+            Section {
+                ForEach(appState.quicklinkStore.quicklinks) { quicklink in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(quicklink.name)
+                            Text("\(quicklink.keyword) · \(quicklink.urlTemplate)")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Button("Edit") { editingQuicklink = quicklink }
+                        Button("Remove", role: .destructive) { appState.quicklinkStore.remove(id: quicklink.id) }
+                    }
+                }
+                Button("New Quicklink") {
+                    editingQuicklink = Quicklink(name: "New Quicklink", keyword: "web", urlTemplate: "https://example.com/search?q={query}")
+                }
+            } header: { Text("Quicklinks") }
+              footer: { Text("Type a keyword followed by a query. URL templates must use {query} and HTTP or HTTPS.").font(.caption) }
+
+            Section {
                 ForEach(preferences.indexedRootPaths, id: \.self) { path in
                     HStack {
                         Text(path).lineLimit(1).truncationMode(.middle)
@@ -138,6 +208,18 @@ struct SettingsView: View {
                 RecipeRunView(recipe: recipe) { values in run(recipe, values: values) }
             }
         }
+        .sheet(item: $editingQuicklink) { quicklink in
+            QuicklinkEditorView(quicklink: quicklink) { updated in
+                do { try appState.quicklinkStore.save(updated); return true }
+                catch { operationError = error.localizedDescription; return false }
+            }
+        }
+        .sheet(item: $editingSnippet) { snippet in
+            SnippetEditorView(snippet: snippet) { updated in
+                do { try appState.snippetStore.save(updated); return true }
+                catch { operationError = error.localizedDescription; return false }
+            }
+        }
         .alert("Settings Action Failed", isPresented: operationErrorBinding) {
             Button("OK") { operationError = nil }
         } message: { Text(operationError ?? "") }
@@ -191,6 +273,13 @@ struct SettingsView: View {
         catch { operationError = error.localizedDescription }
     }
 
+    private func installExtension() {
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try appState.extensionStore.install(data: Data(contentsOf: url)) }
+        catch { operationError = error.localizedDescription }
+    }
+
     private func exportRecipes() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "LaunchDeck Recipes.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -208,7 +297,66 @@ struct SettingsView: View {
             appState.requestAction(.runRecipe(identifier: recipe.id, name: recipe.name, steps: steps))
         case .missing(let names):
             operationError = "Enter values for: \(names.joined(separator: ", "))."
+        case .invalid(let errors):
+            operationError = errors.joined(separator: "\n")
         }
+    }
+}
+
+private struct QuicklinkEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var quicklink: Quicklink
+    let onSave: (Quicklink) -> Bool
+
+    init(quicklink: Quicklink, onSave: @escaping (Quicklink) -> Bool) {
+        _quicklink = State(initialValue: quicklink)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Quicklink").font(.title2.weight(.semibold))
+            TextField("Name", text: $quicklink.name)
+            TextField("Keyword", text: $quicklink.keyword)
+            TextField("URL template", text: $quicklink.urlTemplate)
+            Text("Use {query} where the encoded search text belongs.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                Button("Save") { if onSave(quicklink) { dismiss() } }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+    }
+}
+
+private struct SnippetEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var snippet: Snippet
+    let onSave: (Snippet) -> Bool
+
+    init(snippet: Snippet, onSave: @escaping (Snippet) -> Bool) {
+        _snippet = State(initialValue: snippet)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Snippet").font(.title2.weight(.semibold))
+            TextField("Name", text: $snippet.name)
+            TextField("Keyword", text: $snippet.keyword)
+            TextEditor(text: $snippet.content).frame(minHeight: 140).border(.separator)
+            Text("Placeholders: {date}, {time}, {clipboard}").font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                Button("Save") { if onSave(snippet) { dismiss() } }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24).frame(width: 480)
     }
 }
 
@@ -224,7 +372,7 @@ private enum RecipeSheet: Identifiable {
     }
 }
 
-private struct RecipeEditorView: View {
+struct RecipeEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var recipe: Recipe
     let applications: [DiscoveredApp]
@@ -284,6 +432,9 @@ private struct RecipeEditorView: View {
                     ForEach($recipe.variables) { $variable in
                         HStack {
                             TextField("Name", text: $variable.name)
+                            Picker("Type", selection: $variable.valueType) {
+                                ForEach(RecipeVariable.ValueType.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                            }.frame(width: 120)
                             TextField("Default value (optional)", text: $variable.defaultValue)
                             Button("Remove", role: .destructive) {
                                 recipe.variables.removeAll { $0.id == variable.id }
@@ -299,6 +450,16 @@ private struct RecipeEditorView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.top, 4)
+            }
+            GroupBox("Failure Handling") {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach($recipe.steps) { $step in
+                        Picker(step.summary, selection: $step.failurePolicy) {
+                            Text("Stop Recipe").tag(RecipeStep.FailurePolicy.stop)
+                            Text("Continue").tag(RecipeStep.FailurePolicy.continueNext)
+                        }
+                    }
+                }.padding(.top, 4)
             }
             HStack {
                 Spacer()
@@ -382,10 +543,12 @@ private struct RecipeEditorView: View {
 
 struct RecipeRunView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var preferences: AppPreferences
     let recipe: Recipe
     let onRun: ([String: String]) -> Void
     @State private var values: [String: String]
     @State private var missingNames: [String] = []
+    @State private var dryRunReport: RecipeDryRunReport?
 
     init(recipe: Recipe, onRun: @escaping ([String: String]) -> Void) {
         self.recipe = recipe
@@ -407,9 +570,22 @@ struct RecipeRunView: View {
                 Text("Required: \(missingNames.joined(separator: ", "))")
                     .font(.caption).foregroundStyle(.red)
             }
+            if let dryRunReport {
+                GroupBox(dryRunReport.isReady ? "Dry Run Ready" : "Dry Run Issues") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(dryRunReport.steps, id: \.self) { Text($0) }
+                        ForEach(dryRunReport.permissions, id: \.self) { Text($0).foregroundStyle(.orange) }
+                        ForEach(dryRunReport.errors, id: \.self) { Text($0).foregroundStyle(.red) }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
+                Button("Dry Run") {
+                    dryRunReport = RecipeDryRun.inspect(recipe, values: values,
+                                                        approvedShortcuts: Set(preferences.approvedShortcuts))
+                }
                 Button("Review and Run") { submit() }.keyboardShortcut(.defaultAction)
             }
         }
@@ -422,11 +598,17 @@ struct RecipeRunView: View {
     }
 
     private func submit() {
-        if case .missing(let names) = RecipeVariableResolver.resolve(
+        switch RecipeVariableResolver.resolve(
             steps: recipe.steps, variables: recipe.variables, values: values
         ) {
+        case .missing(let names):
             missingNames = names
             return
+        case .invalid(let errors):
+            missingNames = errors
+            return
+        case .resolved:
+            break
         }
         let submittedValues = values
         dismiss()

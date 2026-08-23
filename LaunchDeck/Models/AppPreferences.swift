@@ -103,6 +103,8 @@ final class AppPreferences: ObservableObject {
     @Published var showHiddenApps: Bool
     @Published var approvedShortcuts: [String]
     @Published var indexedRootPaths: [String]
+    @Published var clipboardEnabled: Bool
+    @Published var clipboardRetentionHours: Int
 
     private let defaults: UserDefaults
     fileprivate var cancellables = Set<AnyCancellable>()
@@ -119,6 +121,8 @@ final class AppPreferences: ObservableObject {
         static let showHiddenApps = "preferences.showHiddenApps"
         static let approvedShortcuts = "preferences.approvedShortcuts"
         static let indexedRootPaths = "preferences.indexedRootPaths"
+        static let clipboardEnabled = "preferences.clipboardEnabled"
+        static let clipboardRetentionHours = "preferences.clipboardRetentionHours"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -162,6 +166,9 @@ final class AppPreferences: ObservableObject {
         showHiddenApps = defaults.bool(forKey: Keys.showHiddenApps)
         approvedShortcuts = defaults.stringArray(forKey: Keys.approvedShortcuts) ?? []
         indexedRootPaths = defaults.stringArray(forKey: Keys.indexedRootPaths) ?? []
+        clipboardEnabled = defaults.bool(forKey: Keys.clipboardEnabled)
+        clipboardRetentionHours = defaults.object(forKey: Keys.clipboardRetentionHours) == nil
+            ? 168 : max(24, defaults.integer(forKey: Keys.clipboardRetentionHours))
 
         if let shortcutData = defaults.data(forKey: Keys.globalShortcut),
            let decoded = try? JSONDecoder().decode(KeyboardShortcutPreference.self, from: shortcutData) {
@@ -260,5 +267,7 @@ final class AppPreferences: ObservableObject {
             .dropFirst()
             .sink { [weak self] value in self?.defaults.set(value, forKey: Keys.indexedRootPaths) }
             .store(in: &cancellables)
+        $clipboardEnabled.dropFirst().sink { [weak self] in self?.defaults.set($0, forKey: Keys.clipboardEnabled) }.store(in: &cancellables)
+        $clipboardRetentionHours.dropFirst().sink { [weak self] in self?.defaults.set($0, forKey: Keys.clipboardRetentionHours) }.store(in: &cancellables)
     }
 }

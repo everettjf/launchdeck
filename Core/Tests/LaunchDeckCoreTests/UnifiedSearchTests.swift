@@ -24,4 +24,26 @@ struct UnifiedSearchTests {
         let result = IntentRecommendationValidator.validate([inventedTarget, inventedAction, valid], allowedTargets: ["target"], allowedActions: ["open.project"])
         #expect(result == [valid])
     }
+
+    @Test("Per-item learning boosts can change ranking without changing text matching")
+    func itemBoosts() {
+        let first = SearchItem(id: "first", kind: .application, title: "Code One",
+                               target: .application(identifier: "one", path: "/One.app"))
+        let second = SearchItem(id: "second", kind: .application, title: "Code Two",
+                                target: .application(identifier: "two", path: "/Two.app"))
+        let results = UnifiedSearchIndex(items: [first, second]).search("code", itemBoosts: ["second": 0.2])
+        #expect(results.first?.item.id == "second")
+    }
+
+    @Test("Token narrowing preserves metadata matches and typo fallback")
+    func tokenNarrowingPreservesBehavior() {
+        let items = [
+            SearchItem(id: "exact", kind: .application, title: "Benchmark App 50",
+                       target: .application(identifier: "exact", path: "/Exact.app")),
+            SearchItem(id: "other", kind: .file, title: "Brief 50", target: .file(path: "/Brief")),
+        ]
+        let index = UnifiedSearchIndex(items: items)
+        #expect(index.search("benchmark app 50").first?.item.id == "exact")
+        #expect(index.search("benchmrk app 50").first?.item.id == "exact")
+    }
 }

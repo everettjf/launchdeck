@@ -1,6 +1,7 @@
 import Foundation
 
 nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
+    enum FailurePolicy: String, Codable, CaseIterable, Hashable, Sendable { case stop, continueNext }
     enum Operation: Codable, Hashable, Sendable {
         case openApplication(identifier: String, name: String)
         case openProject(path: String)
@@ -10,10 +11,20 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
 
     let id: UUID
     var operation: Operation
+    var failurePolicy: FailurePolicy
 
-    init(id: UUID = UUID(), operation: Operation) {
+    init(id: UUID = UUID(), operation: Operation, failurePolicy: FailurePolicy = .stop) {
         self.id = id
         self.operation = operation
+        self.failurePolicy = failurePolicy
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, operation, failurePolicy }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        operation = try container.decode(Operation.self, forKey: .operation)
+        failurePolicy = try container.decodeIfPresent(FailurePolicy.self, forKey: .failurePolicy) ?? .stop
     }
 
     static func openApplication(identifier: String, name: String) -> Self {

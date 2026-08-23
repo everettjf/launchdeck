@@ -24,7 +24,7 @@ enum IntentActionResolver {
         case .systemSetting(let identifier): parameters["identifier"] = identifier
         case .shortcut(let name): parameters["name"] = name
         case .recipe(let identifier): parameters["identifier"] = identifier.uuidString
-        case .registeredAction: break
+        case .registeredAction, .copyText, .url, .systemCommand: break
         }
         if recommendation.actionIdentifier == "open.file-with",
            let identifier = parameters["applicationIdentifier"] {
