@@ -1,10 +1,8 @@
 # LaunchDeck
 
-Repository: <https://github.com/everettjf/startmyapp>
+Repository: <https://github.com/everettjf/launchdeck>
 
-Formerly StartMyApp.
-
-[https://startmy.app](https://startmy.app)
+[https://xnu.app/launchdeck/](https://xnu.app/launchdeck/)
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eGzEaP6TzR)
 
@@ -79,4 +77,4 @@ MIT
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=everettjf/StartMyApp&type=Date)](https://star-history.com/#everettjf/StartMyApp&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=everettjf/launchdeck&type=Date)](https://star-history.com/#everettjf/launchdeck&Date)
