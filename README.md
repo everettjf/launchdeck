@@ -31,6 +31,14 @@ LaunchDeck is configured for direct Developer ID distribution rather than the Ma
 - Xcode 26.0+ and XcodeGen (local build)
 - Intent search requires macOS 26, Apple Intelligence-capable hardware, and an available on-device model
 
+## Install with Homebrew
+
+```bash
+brew install --cask everettjf/tap/launchdeck
+```
+
+Upgrade later with `brew upgrade --cask launchdeck`. The Homebrew build is signed with Developer ID and notarized by Apple. You can also download the latest ZIP from [GitHub Releases](https://github.com/everettjf/launchdeck/releases/latest).
+
 ## Build Locally
 
 1. Install XcodeGen: `brew install xcodegen`
