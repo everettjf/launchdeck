@@ -53,7 +53,11 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
     private func createStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: Bundle.main.appDisplayName)
+            let icon = NSApp.applicationIconImage.copy() as? NSImage
+            icon?.size = NSSize(width: 18, height: 18)
+            icon?.isTemplate = false
+            icon?.accessibilityDescription = Bundle.main.appDisplayName
+            button.image = icon
             button.imagePosition = .imageOnly
             button.action = #selector(statusItemClicked(_:))
             button.target = self

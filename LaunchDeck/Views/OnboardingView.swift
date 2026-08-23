@@ -37,7 +37,7 @@ struct OnboardingView: View {
     @ViewBuilder private var pageContent: some View {
         switch page {
         case 0:
-            onboardingPage(icon: "paperplane.circle.fill", title: "Send anything. Do anything.",
+            onboardingPage(icon: nil, title: "Send anything. Do anything.",
                            detail: "LaunchDeck combines instant local search with a transparent Object → Action → Target workflow. Every file-changing action is previewed, and supported operations can be undone.") {
                 Label("Search remains fully functional without AI or a network connection.", systemImage: "lock.shield")
             }
@@ -66,10 +66,16 @@ struct OnboardingView: View {
         }
     }
 
-    private func onboardingPage<Content: View>(icon: String, title: String, detail: String,
+    private func onboardingPage<Content: View>(icon: String?, title: String, detail: String,
                                                 @ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 18) {
-            Image(systemName: icon).font(.system(size: 64)).foregroundStyle(.tint).accessibilityHidden(true)
+            if let icon {
+                Image(systemName: icon).font(.system(size: 64)).foregroundStyle(.tint).accessibilityHidden(true)
+            } else {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable().scaledToFit().frame(width: 96, height: 96)
+                    .accessibilityLabel("LaunchDeck")
+            }
             Text(title).font(.largeTitle.weight(.bold)).multilineTextAlignment(.center)
             Text(detail).font(.title3).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 500)
             GroupBox { VStack(alignment: .leading, spacing: 12, content: content).padding(6) }.frame(maxWidth: 500)
