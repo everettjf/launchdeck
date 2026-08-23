@@ -230,7 +230,9 @@ if [[ "$resume_release" != true ]]; then
   ' "$project_file"
   git -C "$project_root" add -- project.yml
   git -C "$project_root" diff --cached --check
-  git -C "$project_root" commit -m "Prepare LaunchDeck $version (build $next_build)"
+  if ! git -C "$project_root" diff --cached --quiet; then
+    git -C "$project_root" commit -m "Prepare LaunchDeck $version (build $next_build)"
+  fi
   git -C "$project_root" tag -a "$tag" -m "LaunchDeck $version"
   git -C "$project_root" push origin "HEAD:refs/heads/$release_branch" "refs/tags/$tag"
 fi
