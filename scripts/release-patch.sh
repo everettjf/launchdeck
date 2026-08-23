@@ -123,11 +123,20 @@ if [[ "$current_version" == "$latest_version" && "$latest_tag_commit" == "$head_
   next_build="$current_build"
   echo "Resuming incomplete $tag publication."
 else
-  version="$major.$minor.$((patch + 1))"
+  if [[ "$current_version" == "$latest_version" ]]; then
+    version="$major.$minor.$((patch + 1))"
+    next_build="$((current_build + 1))"
+  else
+    ruby -e '
+      require "rubygems/version"
+      abort "project version must be newer than the latest tag" unless
+        Gem::Version.new(ARGV.fetch(0)) > Gem::Version.new(ARGV.fetch(1))
+    ' "$current_version" "$latest_version"
+    version="$current_version"
+    next_build="$current_build"
+    echo "Publishing the pre-bumped release version $version."
+  fi
   tag="v$version"
-  next_build="$((current_build + 1))"
-  [[ "$current_version" == "$latest_version" ]] || \
-    fail "project version is $current_version but latest tag is $latest_version"
   if git -C "$project_root" rev-parse "$tag" >/dev/null 2>&1 || \
      git -C "$project_root" ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
     fail "$tag already exists"
