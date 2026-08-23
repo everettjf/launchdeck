@@ -8,3 +8,5 @@ Core/.build/
 
 # SwiftPM build artifacts for the root package
 .build/
+.build-benchmark/
+Core/.benchmark-results/

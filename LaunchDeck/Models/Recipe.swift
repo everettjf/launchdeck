@@ -2,29 +2,51 @@ import Foundation
 
 nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
     enum FailurePolicy: String, Codable, CaseIterable, Hashable, Sendable { case stop, continueNext }
+    enum Condition: Codable, Hashable, Sendable {
+        case fileExists(path: String)
+        case applicationRunning(identifier: String)
+        case valueEquals(lhs: String, rhs: String)
+    }
     enum Operation: Codable, Hashable, Sendable {
         case openApplication(identifier: String, name: String)
         case openProject(path: String)
         case openTerminal(directory: String)
         case runShortcut(name: String)
+        case delay(seconds: Double)
     }
 
     let id: UUID
     var operation: Operation
     var failurePolicy: FailurePolicy
+    var condition: Condition?
+    var retryCount: Int
+    var isOptional: Bool
+    var outputVariable: String?
 
-    init(id: UUID = UUID(), operation: Operation, failurePolicy: FailurePolicy = .stop) {
+    init(id: UUID = UUID(), operation: Operation, failurePolicy: FailurePolicy = .stop,
+         condition: Condition? = nil, retryCount: Int = 0, isOptional: Bool = false,
+         outputVariable: String? = nil) {
         self.id = id
         self.operation = operation
         self.failurePolicy = failurePolicy
+        self.condition = condition
+        self.retryCount = max(0, min(retryCount, 5))
+        self.isOptional = isOptional
+        self.outputVariable = outputVariable
     }
 
-    private enum CodingKeys: String, CodingKey { case id, operation, failurePolicy }
+    private enum CodingKeys: String, CodingKey {
+        case id, operation, failurePolicy, condition, retryCount, isOptional, outputVariable
+    }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         operation = try container.decode(Operation.self, forKey: .operation)
         failurePolicy = try container.decodeIfPresent(FailurePolicy.self, forKey: .failurePolicy) ?? .stop
+        condition = try container.decodeIfPresent(Condition.self, forKey: .condition)
+        retryCount = max(0, min(try container.decodeIfPresent(Int.self, forKey: .retryCount) ?? 0, 5))
+        isOptional = try container.decodeIfPresent(Bool.self, forKey: .isOptional) ?? false
+        outputVariable = try container.decodeIfPresent(String.self, forKey: .outputVariable)
     }
 
     static func openApplication(identifier: String, name: String) -> Self {
@@ -33,6 +55,7 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
     static func openProject(path: String) -> Self { .init(operation: .openProject(path: path)) }
     static func openTerminal(directory: String) -> Self { .init(operation: .openTerminal(directory: directory)) }
     static func runShortcut(name: String) -> Self { .init(operation: .runShortcut(name: name)) }
+    static func delay(seconds: Double) -> Self { .init(operation: .delay(seconds: seconds)) }
 
     var summary: String {
         switch operation {
@@ -40,6 +63,7 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
         case .openProject(let path): return "Open project \(URL(fileURLWithPath: path).lastPathComponent)"
         case .openTerminal(let path): return "Open Terminal at \(path)"
         case .runShortcut(let name): return "Run Shortcut “\(name)”"
+        case .delay(let seconds): return "Wait \(seconds.formatted()) seconds"
         }
     }
 
@@ -49,6 +73,7 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
         case .openProject(let path): return .openProject(path: path)
         case .openTerminal(let directory): return .openTerminal(directory: directory)
         case .runShortcut(let name): return .runShortcut(name: name)
+        case .delay(let seconds): return .wait(seconds: seconds)
         }
     }
 }
@@ -85,21 +110,28 @@ nonisolated enum RecipeValidation {
         if recipe.steps.isEmpty { return "A recipe must contain at least one step." }
         if recipe.steps.count > maximumSteps { return "A recipe can contain at most \(maximumSteps) steps." }
         if Set(recipe.steps.map(\.id)).count != recipe.steps.count { return "Recipe step identifiers must be unique." }
+        if recipe.steps.contains(where: { $0.retryCount < 0 || $0.retryCount > 5 }) { return "Recipe retry counts must be between 0 and 5." }
         let names = recipe.variables.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
         if names.contains(where: \.isEmpty) { return "Recipe variable names are required." }
         if Set(names).count != names.count { return "Recipe variable names must be unique." }
         if names.contains(where: { RecipeVariableResolver.placeholders(in: "{{\($0)}}").first != $0 }) {
             return "Recipe variable names must begin with a letter and contain only letters, numbers, hyphens, or underscores."
         }
+        let outputNames = recipe.steps.compactMap(\.outputVariable)
+        if outputNames.contains(where: { RecipeVariableResolver.placeholders(in: "{{\($0)}}").first != $0 }) {
+            return "Output variable names must use the same format as recipe variables."
+        }
+        if Set(outputNames).count != outputNames.count { return "Output variable names must be unique." }
         let placeholders = Set(recipe.steps.flatMap { step -> [String] in
             switch step.operation {
             case .openApplication(let identifier, let name):
                 return RecipeVariableResolver.placeholders(in: identifier) + RecipeVariableResolver.placeholders(in: name)
             case .openProject(let path), .openTerminal(let path), .runShortcut(let path):
                 return RecipeVariableResolver.placeholders(in: path)
+            case .delay: return []
             }
         })
-        let undeclared = placeholders.subtracting(names).sorted()
+        let undeclared = placeholders.subtracting(Set(names + outputNames)).sorted()
         if !undeclared.isEmpty { return "Declare recipe variables: \(undeclared.joined(separator: ", "))." }
         return nil
     }

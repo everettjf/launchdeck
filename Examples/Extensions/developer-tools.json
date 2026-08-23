@@ -1,8 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "com.launchdeck.examples.developer-tools",
   "name": "Developer Tools",
   "version": "1.0.0",
+  "minimumLaunchDeckVersion": "1.5.0",
+  "publisher": "LaunchDeck Examples",
   "permissions": ["network"],
   "commands": [
     {

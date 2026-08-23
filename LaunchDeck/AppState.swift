@@ -20,8 +20,10 @@ final class AppState: ObservableObject {
     let searchController: SemanticSearchController
     let actionController: ActionController
     let recipeStore: RecipeStore
+    let recipeExecutionLogStore: RecipeExecutionLogStore
     let quicklinkStore: QuicklinkStore
     let clipboardStore: ClipboardStore
+    private let fileOperationService = FileOperationService()
     let snippetStore: SnippetStore
     let extensionStore: ExtensionStore
 
@@ -90,7 +92,8 @@ final class AppState: ObservableObject {
 
         let layoutController = LayoutController(layoutStore: layoutStore)
         let searchController = SemanticSearchController()
-        let actionController = ActionController()
+        let recipeExecutionLogStore = RecipeExecutionLogStore()
+        let actionController = ActionController(recipeLogStore: recipeExecutionLogStore)
         let recipeStore = RecipeStore()
         let quicklinkStore = QuicklinkStore()
         let clipboardStore = ClipboardStore()
@@ -100,6 +103,7 @@ final class AppState: ObservableObject {
         self.searchController = searchController
         self.actionController = actionController
         self.recipeStore = recipeStore
+        self.recipeExecutionLogStore = recipeExecutionLogStore
         self.quicklinkStore = quicklinkStore
         self.clipboardStore = clipboardStore
         self.snippetStore = snippetStore
@@ -318,7 +322,10 @@ final class AppState: ObservableObject {
 
     func searchItems(matching query: String, limit: Int = 80) -> [SearchItem] {
         let utilities = UtilitySearchProvider.results(for: query, quicklinks: quicklinkStore.quicklinks)
-            + desktopUtilityItems(matching: query)
+            + DesktopSearchProvider.items(matching: query,
+                                          clipboardEnabled: preferences.clipboardEnabled,
+                                          clipboardEntries: clipboardStore.entries,
+                                          snippets: snippetStore.snippets)
             + extensionStore.searchItems(matching: query)
         let ranked = unifiedSearchIndex.search(query,
                                                kindBoosts: [.application: 0.04, .project: 0.03],
@@ -352,7 +359,67 @@ final class AppState: ObservableObject {
             let directory = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
                 ? path : URL(fileURLWithPath: path).deletingLastPathComponent().path
             requestAction(.openTerminal(directory: directory))
+        case .rename:
+            guard let url = item.fileSystemURL,
+                  let name = prompt(title: "Rename \(url.lastPathComponent)", message: "Enter a new name:", value: url.lastPathComponent) else { return }
+            runFileOperation { _ = try fileOperationService.rename(url, to: name) }
+        case .move:
+            guard let url = item.fileSystemURL else { return }
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Move Here"
+            if let recent = fileOperationService.recentDestinationPaths.first {
+                panel.directoryURL = URL(fileURLWithPath: recent)
+            }
+            guard panel.runModal() == .OK, let destination = panel.url else { return }
+            runFileOperation { _ = try fileOperationService.move([url], to: destination) }
+        case .duplicate:
+            guard let url = item.fileSystemURL else { return }
+            runFileOperation { _ = try fileOperationService.duplicate(url) }
+        case .compress:
+            guard let url = item.fileSystemURL else { return }
+            runFileOperation { _ = try fileOperationService.compress(url) }
+        case .tag:
+            guard let url = item.fileSystemURL,
+                  let value = prompt(title: "Set Finder Tags", message: "Enter comma-separated tags:", value: "") else { return }
+            runFileOperation {
+                try fileOperationService.setTags(value.split(separator: ",").map(String.init), on: [url])
+            }
+        case .trash:
+            guard let url = item.fileSystemURL else { return }
+            let alert = NSAlert()
+            alert.messageText = "Move “\(url.lastPathComponent)” to Trash?"
+            alert.informativeText = "The item can be recovered from the Trash."
+            alert.addButton(withTitle: "Move to Trash")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            runFileOperation { try fileOperationService.moveToTrash([url]) }
         }
+    }
+
+    private func runFileOperation(_ operation: () throws -> Void) {
+        do {
+            try operation()
+            refreshLocalContent()
+        } catch {
+            let alert = NSAlert(error: error)
+            alert.runModal()
+        }
+    }
+
+    private func prompt(title: String, message: String, value: String) -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        let field = NSTextField(string: value)
+        field.frame = CGRect(x: 0, y: 0, width: 360, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Continue")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue
     }
 
     private func reveal(_ item: SearchItem) {
@@ -484,6 +551,7 @@ final class AppState: ObservableObject {
         searchLearningStore.clear()
         recentSearchQueries = []
         clipboardStore.clear()
+        recipeExecutionLogStore.clear()
         indexedItems = []
         rebuildUnifiedIndex()
         refreshLocalContent()
@@ -625,32 +693,6 @@ final class AppState: ObservableObject {
         refreshLocalContent()
     }
 
-    private func desktopUtilityItems(matching query: String) -> [SearchItem] {
-        let query = query.lowercased()
-        var items: [SearchItem] = []
-        if preferences.clipboardEnabled {
-            items += clipboardStore.entries.filter { $0.text.lowercased().contains(query) }.prefix(20).map {
-                SearchItem(id: "clipboard:\($0.id)", kind: .clipboard,
-                           title: String($0.text.prefix(80)), subtitle: $0.copiedAt.formatted(),
-                           keywords: ["clipboard", "copy", "paste"], target: .copyText($0.text))
-            }
-        }
-        items += snippetStore.snippets.filter {
-            $0.name.lowercased().contains(query) || $0.keyword.lowercased().contains(query) || $0.content.lowercased().contains(query)
-        }.map {
-            SearchItem(id: "snippet:\($0.id)", kind: .snippet, title: $0.name, subtitle: $0.keyword,
-                       keywords: ["snippet", "text", $0.keyword],
-                       target: .copyText($0.expanded(clipboard: clipboardStore.entries.first?.text)))
-        }
-        items += DesktopWindowCommand.allCases.filter {
-            $0.title.lowercased().contains(query) || $0.rawValue.lowercased().contains(query)
-        }.map {
-            SearchItem(id: $0.rawValue, kind: .windowAction, title: $0.title,
-                       keywords: ["window", "move", "resize"], target: .systemCommand($0.rawValue))
-        }
-        return items
-    }
-
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {
         switch option {
         case .custom:
@@ -666,6 +708,8 @@ final class AppState: ObservableObject {
 }
 
 private extension SearchItem {
+    var fileSystemURL: URL? { fileSystemPath.map { URL(fileURLWithPath: $0) } }
+
     var fileSystemPath: String? {
         switch target {
         case .application(_, let path), .file(let path), .folder(let path), .project(let path): path

@@ -41,7 +41,7 @@ final class ClipboardMonitor {
     private let preferences: AppPreferences
     private var timer: Timer?
     private var lastChangeCount = NSPasteboard.general.changeCount
-    private let sensitiveBundleIDs: Set<String> = [
+    static let builtInSensitiveBundleIDs: Set<String> = [
         "com.1password.1password", "com.agilebits.onepassword7", "com.bitwarden.desktop", "com.lastpass.LastPass"
     ]
 
@@ -63,7 +63,8 @@ final class ClipboardMonitor {
         lastChangeCount = pasteboard.changeCount
         guard preferences.clipboardEnabled,
               let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
-              !sensitiveBundleIDs.contains(bundleID),
+              !Self.builtInSensitiveBundleIDs.contains(bundleID),
+              !preferences.clipboardExcludedBundleIdentifiers.contains(bundleID),
               let text = pasteboard.string(forType: .string) else { return }
         store.record(text, retentionHours: preferences.clipboardRetentionHours)
     }

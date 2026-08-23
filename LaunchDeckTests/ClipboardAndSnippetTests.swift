@@ -28,4 +28,25 @@ final class ClipboardAndSnippetTests: XCTestCase {
     func testWindowCommandCatalogHasStableIdentifiers() {
         XCTAssertEqual(Set(DesktopWindowCommand.allCases.map(\.rawValue)).count, DesktopWindowCommand.allCases.count)
     }
+
+    func testClipboardPrivacyPreferencesDefaultOffAndPersistExclusions() {
+        let suite = "ClipboardPrivacyTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var preferences: AppPreferences? = AppPreferences(defaults: defaults)
+        XCTAssertFalse(preferences!.clipboardEnabled)
+        XCTAssertFalse(preferences!.clipboardDisclosureAcknowledged)
+        preferences!.clipboardExcludedBundleIdentifiers = ["com.example.secret"]
+        preferences = nil
+        XCTAssertEqual(AppPreferences(defaults: defaults).clipboardExcludedBundleIdentifiers, ["com.example.secret"])
+    }
+
+    func testWindowTargetsCoverHalvesAndQuartersExactly() {
+        let frame = CGRect(x: 100, y: 40, width: 1200, height: 800)
+        let current = CGRect(x: 200, y: 100, width: 500, height: 400)
+        XCTAssertEqual(DesktopWindowController.targetFrame(for: .leftHalf, visibleFrame: frame, currentFrame: current),
+                       CGRect(x: 100, y: 40, width: 600, height: 800))
+        XCTAssertEqual(DesktopWindowController.targetFrame(for: .bottomRight, visibleFrame: frame, currentFrame: current),
+                       CGRect(x: 700, y: 440, width: 600, height: 400))
+    }
 }

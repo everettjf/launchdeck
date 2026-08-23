@@ -1,0 +1,11 @@
+{
+  "apps": 10000,
+  "maximums": {
+    "cold_index_ms": 2500.0,
+    "incremental_refresh_ms": 50.0,
+    "search_p95_ms": 75.0,
+    "continuous_10_queries_ms": 750.0,
+    "intent_candidate_retrieval_ms": 75.0,
+    "unified_search_p95_ms": 10.0
+  }
+}

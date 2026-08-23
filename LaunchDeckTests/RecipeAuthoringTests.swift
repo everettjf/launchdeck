@@ -71,12 +71,26 @@ struct RecipeAuthoringTests {
         let templates = RecipeTemplateCatalog.templates
         #expect(Set(templates.map(\.id)).count == templates.count)
         for template in templates {
-            let values = Dictionary(uniqueKeysWithValues: template.variables.map { ($0.name, "value") })
+            let values = Dictionary(uniqueKeysWithValues: template.variables.map {
+                ($0.name, $0.valueType == .file || $0.valueType == .folder ? "/tmp" : "value")
+            })
             guard case .resolved(let steps) = RecipeVariableResolver.resolve(
                 steps: template.steps, variables: template.variables, values: values
             ) else { Issue.record("Template did not resolve: \(template.id)"); continue }
             #expect(RecipeValidation.error(for: Recipe(name: template.name, steps: steps)) == nil)
         }
+    }
+
+    @Test func outputVariablesRemainDeferredUntilExecution() {
+        let first = RecipeStep(operation: .openProject(path: "{{root}}"), outputVariable: "opened")
+        let second = RecipeStep(operation: .openTerminal(directory: "{{opened}}"))
+        let result = RecipeVariableResolver.resolve(steps: [first, second],
+                                                    variables: [RecipeVariable(name: "root")],
+                                                    values: ["root": "/tmp"])
+        guard case .resolved(let steps) = result else { Issue.record("Expected resolution"); return }
+        #expect(steps[0].operation == .openProject(path: "/tmp"))
+        #expect(steps[1].operation == .openTerminal(directory: "{{opened}}"))
+        #expect(RecipeValidation.error(for: Recipe(name: "Outputs", variables: [RecipeVariable(name: "root")], steps: steps)) == nil)
     }
 
     @Test func typedVariablesRejectInvalidChoices() {

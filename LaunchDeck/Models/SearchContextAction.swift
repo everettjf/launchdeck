@@ -7,6 +7,12 @@ enum SearchContextAction: String, Identifiable, CaseIterable, Sendable {
     case quickLook
     case copyPath
     case openTerminal
+    case rename
+    case move
+    case duplicate
+    case compress
+    case tag
+    case trash
 
     var id: String { rawValue }
 
@@ -17,6 +23,12 @@ enum SearchContextAction: String, Identifiable, CaseIterable, Sendable {
         case .quickLook: "Quick Look"
         case .copyPath: "Copy Path"
         case .openTerminal: "Open Terminal Here"
+        case .rename: "Rename…"
+        case .move: "Move…"
+        case .duplicate: "Duplicate"
+        case .compress: "Compress to ZIP"
+        case .tag: "Set Finder Tags…"
+        case .trash: "Move to Trash…"
         }
     }
 
@@ -27,6 +39,12 @@ enum SearchContextAction: String, Identifiable, CaseIterable, Sendable {
         case .quickLook: "eye"
         case .copyPath: "doc.on.doc"
         case .openTerminal: "terminal"
+        case .rename: "pencil"
+        case .move: "folder.badge.plus"
+        case .duplicate: "plus.square.on.square"
+        case .compress: "archivebox"
+        case .tag: "tag"
+        case .trash: "trash"
         }
     }
 
@@ -36,7 +54,7 @@ enum SearchContextAction: String, Identifiable, CaseIterable, Sendable {
         case .reveal: "⌘↩"
         case .quickLook: "Space"
         case .copyPath: "⇧⌘C"
-        case .openTerminal: nil
+        case .openTerminal, .rename, .move, .duplicate, .compress, .tag, .trash: nil
         }
     }
 }
@@ -47,9 +65,9 @@ enum SearchContextActionCatalog {
         case .application:
             [.open, .reveal, .copyPath]
         case .file:
-            [.open, .quickLook, .reveal, .copyPath]
+            [.open, .quickLook, .reveal, .copyPath, .rename, .move, .duplicate, .compress, .tag, .trash]
         case .folder, .project:
-            [.open, .quickLook, .reveal, .copyPath, .openTerminal]
+            [.open, .quickLook, .reveal, .copyPath, .openTerminal, .rename, .move, .duplicate, .compress, .tag, .trash]
         case .recipe, .shortcut, .setting:
             [.open]
         case .action:

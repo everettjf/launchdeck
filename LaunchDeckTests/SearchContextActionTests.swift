@@ -5,7 +5,8 @@ import XCTest
 final class SearchContextActionTests: XCTestCase {
     func testFileActionsAreContextualAndStable() {
         let file = SearchItem(id: "file:/tmp/a", kind: .file, title: "A", target: .file(path: "/tmp/a"))
-        XCTAssertEqual(SearchContextActionCatalog.actions(for: file), [.open, .quickLook, .reveal, .copyPath])
+        XCTAssertEqual(SearchContextActionCatalog.actions(for: file),
+                       [.open, .quickLook, .reveal, .copyPath, .rename, .move, .duplicate, .compress, .tag, .trash])
     }
 
     func testActionsThatNeedTargetsDoNotOfferContextlessOperations() {

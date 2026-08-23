@@ -406,19 +406,32 @@ struct ContentView: View {
         appState.requestAction(.runRecipe(identifier: recipe.id, name: recipe.name, steps: steps))
     }
 
-private func configure() {
-    searchText = appState.searchQuery
-    WindowManager.shared.registerOpenWindowAction(openWindow)
-    focusCancellable = appState.searchFocusPublisher
-        .receive(on: RunLoop.main)
-        .sink { _ in
-            isSearchFieldFocused = true
+    private var allApplicationsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if appState.orderedCollections().isEmpty {
+                Text("No applications were found on this Mac.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 16)
+            } else {
+                ApplicationsGridView()
+            }
         }
+    }
 
-    // If no apps loaded, trigger a refresh
-    if appState.totalAppCount == 0 {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            appState.refreshApps()
+    private func configure() {
+        searchText = appState.searchQuery
+        WindowManager.shared.registerOpenWindowAction(openWindow)
+        focusCancellable = appState.searchFocusPublisher
+            .receive(on: RunLoop.main)
+            .sink { _ in
+                isSearchFieldFocused = true
+            }
+
+        if appState.totalAppCount == 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                appState.refreshApps()
+            }
         }
     }
 }
@@ -435,58 +448,16 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
             HStack { Text("Search").font(.title2.weight(.semibold)); Spacer(); trailing() }
             LazyVStack(spacing: 6) {
                 ForEach(items) { item in
-                    Button { onRun(item) } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: icon(item.kind)).frame(width: 24).foregroundStyle(.tint)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title).font(.body.weight(.medium)).lineLimit(1)
-                                Text(reason(item) ?? item.subtitle ?? item.kind.rawValue.capitalized)
-                                    .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                            }
-                            Spacer()
-                            Text(item.kind.rawValue.capitalized).font(.caption2).foregroundStyle(.tertiary)
-                        }
-                        .padding(10).contentShape(Rectangle())
+                    SearchResultRow(item: item,
+                                    isSelected: item.id == selectedIdentifier,
+                                    detail: reason(item) ?? item.subtitle ?? item.kind.rawValue.capitalized) {
+                        onRun(item)
                     }
-                    .buttonStyle(.plain)
-                    .background(rowBackground(for: item), in: RoundedRectangle(cornerRadius: 10))
-                    .overlay {
-                        if item.id == selectedIdentifier {
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.accentColor.opacity(0.8), lineWidth: 1.5)
-                        }
-                    }
-                    .accessibilityAddTraits(item.id == selectedIdentifier ? .isSelected : [])
                 }
             }
         }
     }
 
-    private func rowBackground(for item: SearchItem) -> AnyShapeStyle {
-        item.id == selectedIdentifier
-            ? AnyShapeStyle(Color.accentColor.opacity(0.16))
-            : AnyShapeStyle(.regularMaterial)
-    }
-
-    private func icon(_ kind: SearchItemKind) -> String {
-        switch kind {
-        case .application: "app"
-        case .file: "doc"
-        case .folder: "folder"
-        case .project: "hammer"
-        case .action: "bolt"
-        case .setting: "gearshape"
-        case .shortcut: "command"
-        case .recipe: "list.bullet.rectangle"
-        case .calculation: "function"
-        case .quicklink: "link"
-        case .emoji: "face.smiling"
-        case .clipboard: "clipboard"
-        case .snippet: "text.quote"
-        case .windowAction: "macwindow"
-        case .extensionCommand: "puzzlepiece.extension"
-        }
-    }
 }
 
 private struct SearchKindFilterBar: View {
@@ -583,20 +554,6 @@ private struct ActionPreviewView: View {
             HStack { Spacer(); Button("Cancel", role: .cancel, action: onCancel); Button("Run", action: onConfirm).keyboardShortcut(.defaultAction) }
         }
         .padding(24).frame(width: 520)
-    }
-}
-
-private var allApplicationsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if appState.orderedCollections().isEmpty {
-                Text("No applications were found on this Mac.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 16)
-            } else {
-                ApplicationsGridView()
-            }
-        }
     }
 }
 

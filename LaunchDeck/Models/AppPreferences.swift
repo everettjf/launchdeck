@@ -105,6 +105,8 @@ final class AppPreferences: ObservableObject {
     @Published var indexedRootPaths: [String]
     @Published var clipboardEnabled: Bool
     @Published var clipboardRetentionHours: Int
+    @Published var clipboardDisclosureAcknowledged: Bool
+    @Published var clipboardExcludedBundleIdentifiers: Set<String>
 
     private let defaults: UserDefaults
     fileprivate var cancellables = Set<AnyCancellable>()
@@ -123,6 +125,8 @@ final class AppPreferences: ObservableObject {
         static let indexedRootPaths = "preferences.indexedRootPaths"
         static let clipboardEnabled = "preferences.clipboardEnabled"
         static let clipboardRetentionHours = "preferences.clipboardRetentionHours"
+        static let clipboardDisclosureAcknowledged = "preferences.clipboardDisclosureAcknowledged"
+        static let clipboardExcludedBundleIdentifiers = "preferences.clipboardExcludedBundleIdentifiers"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -169,6 +173,8 @@ final class AppPreferences: ObservableObject {
         clipboardEnabled = defaults.bool(forKey: Keys.clipboardEnabled)
         clipboardRetentionHours = defaults.object(forKey: Keys.clipboardRetentionHours) == nil
             ? 168 : max(24, defaults.integer(forKey: Keys.clipboardRetentionHours))
+        clipboardDisclosureAcknowledged = defaults.bool(forKey: Keys.clipboardDisclosureAcknowledged)
+        clipboardExcludedBundleIdentifiers = Set(defaults.stringArray(forKey: Keys.clipboardExcludedBundleIdentifiers) ?? [])
 
         if let shortcutData = defaults.data(forKey: Keys.globalShortcut),
            let decoded = try? JSONDecoder().decode(KeyboardShortcutPreference.self, from: shortcutData) {
@@ -269,5 +275,11 @@ final class AppPreferences: ObservableObject {
             .store(in: &cancellables)
         $clipboardEnabled.dropFirst().sink { [weak self] in self?.defaults.set($0, forKey: Keys.clipboardEnabled) }.store(in: &cancellables)
         $clipboardRetentionHours.dropFirst().sink { [weak self] in self?.defaults.set($0, forKey: Keys.clipboardRetentionHours) }.store(in: &cancellables)
+        $clipboardDisclosureAcknowledged.dropFirst().sink { [weak self] in
+            self?.defaults.set($0, forKey: Keys.clipboardDisclosureAcknowledged)
+        }.store(in: &cancellables)
+        $clipboardExcludedBundleIdentifiers.dropFirst().sink { [weak self] in
+            self?.defaults.set(Array($0).sorted(), forKey: Keys.clipboardExcludedBundleIdentifiers)
+        }.store(in: &cancellables)
     }
 }

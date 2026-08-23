@@ -9,13 +9,16 @@ final class ActionController: ObservableObject {
     @Published private(set) var lastError: String?
 
     private let historyStore: ActionHistoryStore
+    private let recipeLogStore: RecipeExecutionLogStore
     var appProvider: (String) -> URL?
     var applicationOpened: (String) -> Void = { _ in }
     var documentOpened: (String) -> Void = { _ in }
 
     init(historyStore: ActionHistoryStore = ActionHistoryStore(),
+         recipeLogStore: RecipeExecutionLogStore = RecipeExecutionLogStore(),
          appProvider: @escaping (String) -> URL? = { _ in nil }) {
         self.historyStore = historyStore
+        self.recipeLogStore = recipeLogStore
         self.appProvider = appProvider
     }
 
@@ -109,17 +112,27 @@ final class ActionController: ObservableObject {
             }
         case .runRecipe(_, _, let steps):
             executeRecipe(steps, parent: action)
+        case .wait(let seconds):
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(max(0, seconds)))
+                self?.complete(action, succeeded: true)
+            }
         }
     }
 
     private func executeRecipe(_ steps: [RecipeStep], parent: LaunchDeckAction) {
         Task { [weak self] in
             guard let self else { return }
-            let succeeded = await RecipeRunner.run(steps) { [weak self] step in
+            let startedAt = Date()
+            let report = await RecipeRunner.runDetailed(steps) { [weak self] step in
                 guard let self else { return false }
                 return await self.executeRecipeStep(step.action)
             }
-            self.complete(parent, succeeded: succeeded)
+            let recipeName: String
+            if case .runRecipe(_, let name, _) = parent { recipeName = name } else { recipeName = parent.title }
+            self.recipeLogStore.append(.init(id: UUID(), recipeName: recipeName, startedAt: startedAt,
+                                             succeeded: report.succeeded, steps: report.stepLogs))
+            self.complete(parent, succeeded: report.succeeded)
         }
     }
 
@@ -148,6 +161,9 @@ final class ActionController: ObservableObject {
             }
         case .runShortcut(let name):
             return await Self.runProcess(executable: "/usr/bin/shortcuts", arguments: ["run", name])
+        case .wait(let seconds):
+            try? await Task.sleep(for: .seconds(max(0, seconds)))
+            return true
         default: return false
         }
     }

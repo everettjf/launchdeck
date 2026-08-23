@@ -10,6 +10,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
     case openProject(path: String)
     case openTerminal(directory: String)
     case runRecipe(identifier: UUID, name: String, steps: [RecipeStep])
+    case wait(seconds: Double)
 
     var id: String {
         switch self {
@@ -22,6 +23,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openProject(let path): return "open-project:\(path)"
         case .openTerminal(let directory): return "terminal:\(directory)"
         case .runRecipe(let identifier, _, _): return "recipe:\(identifier.uuidString)"
+        case .wait(let seconds): return "wait:\(seconds)"
         }
     }
 
@@ -36,6 +38,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openProject(let path): return "Open \(URL(fileURLWithPath: path).lastPathComponent)"
         case .openTerminal: return "Open Terminal Here"
         case .runRecipe(_, let name, _): return "Run “\(name)”"
+        case .wait(let seconds): return "Wait \(seconds.formatted()) seconds"
         }
     }
 
@@ -50,6 +53,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openProject(let path): return path
         case .openTerminal(let directory): return directory
         case .runRecipe(_, _, let steps): return "Runs \(steps.count) deterministic local step\(steps.count == 1 ? "" : "s")."
+        case .wait: return "Pauses before continuing the recipe."
         }
     }
 
@@ -58,6 +62,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .runShortcut: return "Run approved Shortcut"
         case .openURL(let url): return "Open web link on \(url.host ?? "unknown host")"
         case .runRecipe: return "Run approved recipe"
+        case .wait: return "Wait"
         default: return title
         }
     }
@@ -67,6 +72,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .runShortcut: return "shortcut"
         case .openURL(let url): return "open-url:\(url.host ?? "unknown")"
         case .runRecipe: return "recipe"
+        case .wait: return "clock"
         default: return id
         }
     }
@@ -75,6 +81,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         switch self {
         case .openApplication, .revealApplication, .openSystemSettings, .openFile, .openProject: return false
         case .openURL, .runShortcut, .openTerminal, .runRecipe: return true
+        case .wait: return false
         }
     }
 }
@@ -112,9 +119,11 @@ struct ActionPreview: Identifiable, Hashable, Sendable {
         case .runShortcut(let name): target = name
         case .openFile(let path, _, _), .openProject(let path), .openTerminal(let path): target = path
         case .runRecipe(_, let name, _): target = name
+        case .wait(let seconds): target = seconds.formatted()
         }
         switch action {
         case .runRecipe(_, _, let recipeSteps): steps = recipeSteps.map { ActionPreviewStep(id: $0.id, title: $0.summary) }
+        case .wait: steps = [ActionPreviewStep(title: action.title)]
         default: steps = [ActionPreviewStep(title: action.title)]
         }
         switch action {
@@ -172,7 +181,10 @@ enum ActionPolicy {
                 if case .runShortcut(let name) = $0.operation { return !approvedShortcuts.contains(name) }
                 return false
             }) { return "Every Shortcut used by this recipe must be approved in LaunchDeck Settings." }
-            return steps.compactMap { validate($0.action, approvedShortcuts: approvedShortcuts) }.first
+            return steps.compactMap {
+                guard RecipeRunner.conditionMatches($0.condition) else { return nil }
+                return validate($0.action, approvedShortcuts: approvedShortcuts)
+            }.first
         case .openFile(let path, _, _):
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else {
@@ -185,7 +197,7 @@ enum ActionPolicy {
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
                 ? nil : "The Terminal target must be an existing directory."
-        case .openApplication, .revealApplication, .openSystemSettings:
+        case .openApplication, .revealApplication, .openSystemSettings, .wait:
             return nil
         }
     }

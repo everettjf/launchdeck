@@ -11,6 +11,9 @@ struct SettingsView: View {
     @State private var editingQuicklink: Quicklink?
     @State private var editingSnippet: Snippet?
     @State private var operationError: String?
+    @State private var pendingClipboardEnable = false
+    @State private var excludedClipboardBundleIdentifier = ""
+    @State private var accessibilityStatus: AccessibilityPermissionStatus = .denied
 
     var body: some View {
         Form {
@@ -86,6 +89,7 @@ struct SettingsView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
+                        Button("Export…") { exportExtension(manifest) }
                         Button("Uninstall", role: .destructive) {
                             do { try appState.extensionStore.uninstall(id: manifest.id) }
                             catch { operationError = error.localizedDescription }
@@ -94,10 +98,10 @@ struct SettingsView: View {
                 }
                 Button("Install Manifest…", action: installExtension)
             } header: { Text("Extensions") }
-              footer: { Text("Manifest v1 is declarative and cannot execute arbitrary code. Declared permissions are shown before use.").font(.caption) }
+              footer: { Text("Manifest v1 and v2 are declarative and cannot execute arbitrary code. Updates disclose new permissions, and installed manifests can be exported for sharing.").font(.caption) }
 
             Section {
-                Toggle("Enable Clipboard History", isOn: $preferences.clipboardEnabled)
+                Toggle("Enable Clipboard History", isOn: clipboardEnabledBinding)
                 if preferences.clipboardEnabled {
                     Picker("Retention", selection: $preferences.clipboardRetentionHours) {
                         Text("24 Hours").tag(24)
@@ -109,9 +113,42 @@ struct SettingsView: View {
                         Spacer()
                         Button("Clear Clipboard History", role: .destructive) { appState.clipboardStore.clear() }
                     }
+                    HStack {
+                        TextField("Excluded app bundle identifier", text: $excludedClipboardBundleIdentifier)
+                        Button("Exclude", action: addClipboardExclusion)
+                            .disabled(excludedClipboardBundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    ForEach(preferences.clipboardExcludedBundleIdentifiers.sorted(), id: \.self) { identifier in
+                        HStack {
+                            Text(identifier).font(.caption).textSelection(.enabled)
+                            Spacer()
+                            Button("Remove", role: .destructive) {
+                                preferences.clipboardExcludedBundleIdentifiers.remove(identifier)
+                            }
+                        }
+                    }
                 }
             } header: { Text("Clipboard History") }
-              footer: { Text("Disabled by default. Text copied from supported password managers is excluded. Data remains on this Mac.").font(.caption) }
+              footer: { Text("Disabled by default. Stores text only, up to 200 entries and 20,000 characters per entry. Built-in password managers and your excluded apps are ignored. Data remains on this Mac.").font(.caption) }
+
+            Section {
+                HStack {
+                    Text("Accessibility")
+                    Spacer()
+                    Text(accessibilityStatus == .granted ? "Granted" : "Not Granted")
+                        .foregroundStyle(accessibilityStatus == .granted ? .green : .orange)
+                }
+                HStack {
+                    Button("Check Again") { refreshAccessibilityStatus() }
+                    if accessibilityStatus == .denied {
+                        Button("Open Accessibility Settings") { DesktopWindowController.openAccessibilitySettings() }
+                        Button("Request Access") {
+                            accessibilityStatus = DesktopWindowController.permissionStatus(requestIfNeeded: true)
+                        }
+                    }
+                }
+            } header: { Text("Window Management Permission") }
+              footer: { Text("Accessibility is used only when you explicitly run a window command. LaunchDeck does not inspect window contents.").font(.caption) }
 
             Section {
                 ForEach(appState.snippetStore.snippets) { snippet in
@@ -184,7 +221,28 @@ struct SettingsView: View {
               footer: { Text("Recipes are deterministic local action sequences. Every run shows all steps before confirmation.").font(.caption) }
 
             Section {
-                Button("Clear Launch and Action History", role: .destructive) {
+                ForEach(appState.recipeExecutionLogStore.entries.prefix(10)) { entry in
+                    DisclosureGroup {
+                        ForEach(entry.steps) { step in
+                            Text("\(step.summary) · \(step.outcome) · \(step.attempts) attempt(s)")
+                                .font(.caption)
+                        }
+                    } label: {
+                        HStack {
+                            Label(entry.recipeName, systemImage: entry.succeeded ? "checkmark.circle" : "xmark.circle")
+                            Spacer()
+                            Text(entry.startedAt.formatted()).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if !appState.recipeExecutionLogStore.entries.isEmpty {
+                    Button("Clear Recipe Logs", role: .destructive) { appState.recipeExecutionLogStore.clear() }
+                }
+            } header: { Text("Recipe Execution Logs") }
+              footer: { Text("Stores the latest 50 local executions. Logs contain step summaries, outcomes, attempts, and durations.").font(.caption) }
+
+            Section {
+                Button("Clear All Local Behavioral Data", role: .destructive) {
                     appState.clearPrivateHistory()
                 }
             } header: { Text("Privacy") }
@@ -195,6 +253,16 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 520, height: 640)
+        .task { refreshAccessibilityStatus() }
+        .alert("Enable Clipboard History?", isPresented: $pendingClipboardEnable) {
+            Button("Enable") {
+                preferences.clipboardDisclosureAcknowledged = true
+                preferences.clipboardEnabled = true
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("LaunchDeck will monitor copied text locally. It keeps at most 200 items for the selected retention period, ignores known password managers, and lets you clear everything at any time.")
+        }
         .sheet(item: $presentedRecipeSheet) { sheet in
             switch sheet {
             case .edit(let recipe):
@@ -253,6 +321,32 @@ struct SettingsView: View {
         }
     }
 
+    private var clipboardEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { preferences.clipboardEnabled },
+            set: { enabled in
+                if !enabled {
+                    preferences.clipboardEnabled = false
+                } else if preferences.clipboardDisclosureAcknowledged {
+                    preferences.clipboardEnabled = true
+                } else {
+                    pendingClipboardEnable = true
+                }
+            }
+        )
+    }
+
+    private func addClipboardExclusion() {
+        let identifier = excludedClipboardBundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !identifier.isEmpty else { return }
+        preferences.clipboardExcludedBundleIdentifiers.insert(identifier)
+        excludedClipboardBundleIdentifier = ""
+    }
+
+    private func refreshAccessibilityStatus() {
+        accessibilityStatus = DesktopWindowController.permissionStatus()
+    }
+
     private func addShortcut() {
         let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !preferences.approvedShortcuts.contains(name) else { return }
@@ -276,14 +370,36 @@ struct SettingsView: View {
     private func installExtension() {
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try appState.extensionStore.install(data: Data(contentsOf: url)) }
-        catch { operationError = error.localizedDescription }
+        do {
+            let data = try Data(contentsOf: url)
+            do {
+                try appState.extensionStore.install(data: data)
+            } catch ExtensionStoreError.permissionExpansion(let permissions) {
+                let alert = NSAlert()
+                alert.messageText = "Extension Update Requests New Permissions"
+                alert.informativeText = permissions.map(\.rawValue).sorted().joined(separator: ", ")
+                alert.addButton(withTitle: "Install Update")
+                alert.addButton(withTitle: "Cancel")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    try appState.extensionStore.install(data: data, allowPermissionExpansion: true)
+                }
+            }
+        } catch { operationError = error.localizedDescription }
     }
 
     private func exportRecipes() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "LaunchDeck Recipes.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try appState.recipeStore.exportData().write(to: url, options: .atomic) }
+        catch { operationError = error.localizedDescription }
+    }
+
+    private func exportExtension(_ manifest: ExtensionManifest) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "\(manifest.id)-\(manifest.version).json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try appState.extensionStore.exportData(id: manifest.id).write(to: url, options: .atomic) }
         catch { operationError = error.localizedDescription }
     }
 
@@ -384,7 +500,7 @@ struct RecipeEditorView: View {
     @State private var selectedShortcut = ""
     @State private var variableName = ""
 
-    enum StepKind: String, CaseIterable, Identifiable { case application, project, terminal, shortcut; var id: String { rawValue } }
+    enum StepKind: String, CaseIterable, Identifiable { case application, project, terminal, shortcut, delay; var id: String { rawValue } }
 
     init(recipe: Recipe, applications: [DiscoveredApp], approvedShortcuts: [String], onSave: @escaping (Recipe) -> Bool) {
         _recipe = State(initialValue: recipe)
@@ -454,9 +570,20 @@ struct RecipeEditorView: View {
             GroupBox("Failure Handling") {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach($recipe.steps) { $step in
-                        Picker(step.summary, selection: $step.failurePolicy) {
-                            Text("Stop Recipe").tag(RecipeStep.FailurePolicy.stop)
-                            Text("Continue").tag(RecipeStep.FailurePolicy.continueNext)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(step.summary).font(.caption).foregroundStyle(.secondary)
+                            HStack {
+                                Picker("Failure", selection: $step.failurePolicy) {
+                                    Text("Stop Recipe").tag(RecipeStep.FailurePolicy.stop)
+                                    Text("Continue").tag(RecipeStep.FailurePolicy.continueNext)
+                                }.frame(width: 180)
+                                Stepper("Retries: \(step.retryCount)", value: $step.retryCount, in: 0...5)
+                                Toggle("Optional", isOn: $step.isOptional)
+                            }
+                            HStack {
+                                TextField("Output variable (optional)", text: optionalStringBinding($step.outputVariable))
+                                Toggle("Run only when target is available", isOn: conditionBinding($step))
+                            }
                         }
                     }
                 }.padding(.top, 4)
@@ -483,6 +610,8 @@ struct RecipeEditorView: View {
         case .project, .terminal:
             TextField("Path", text: $stepValue)
             Button("Choose…", action: choosePath)
+        case .delay:
+            TextField("Seconds", text: $stepValue)
         }
     }
 
@@ -491,6 +620,7 @@ struct RecipeEditorView: View {
         case .application: !selectedApplicationIdentifier.isEmpty
         case .shortcut: !selectedShortcut.isEmpty
         case .project, .terminal: !stepValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .delay: (Double(stepValue) ?? 0) > 0
         }
     }
 
@@ -503,6 +633,7 @@ struct RecipeEditorView: View {
         case .project: recipe.steps.append(.openProject(path: value))
         case .terminal: recipe.steps.append(.openTerminal(directory: value))
         case .shortcut: recipe.steps.append(.runShortcut(name: selectedShortcut))
+        case .delay: recipe.steps.append(.delay(seconds: Double(value) ?? 1))
         }
         stepValue = ""
     }
@@ -514,6 +645,29 @@ struct RecipeEditorView: View {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         stepValue = url.path
+    }
+
+    private func optionalStringBinding(_ value: Binding<String?>) -> Binding<String> {
+        Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 })
+    }
+
+    private func conditionBinding(_ step: Binding<RecipeStep>) -> Binding<Bool> {
+        Binding(
+            get: { step.wrappedValue.condition != nil },
+            set: { enabled in
+                guard enabled else { step.wrappedValue.condition = nil; return }
+                switch step.wrappedValue.operation {
+                case .openApplication(let identifier, _):
+                    step.wrappedValue.condition = .applicationRunning(identifier: identifier)
+                case .openProject(let path), .openTerminal(let path):
+                    step.wrappedValue.condition = .fileExists(path: path)
+                case .runShortcut(let name):
+                    step.wrappedValue.condition = .valueEquals(lhs: name, rhs: name)
+                case .delay:
+                    step.wrappedValue.condition = .valueEquals(lhs: "ready", rhs: "ready")
+                }
+            }
+        )
     }
 
     private var canAddVariable: Bool {

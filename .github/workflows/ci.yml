@@ -25,7 +25,7 @@ jobs:
         working-directory: Core
 
   app:
-    name: Build app
+    name: App tests and release build
     runs-on: macos-26
     steps:
       - name: Check out repository
@@ -37,5 +37,42 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build
-        run: xcodebuild -scheme LaunchDeck -configuration Debug CODE_SIGNING_ALLOWED=NO build
+      - name: Run app tests
+        run: >-
+          xcodebuild -project LaunchDeck.xcodeproj -scheme LaunchDeck
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/LaunchDeckTests"
+          CODE_SIGNING_ALLOWED=NO test
+
+      - name: Build universal release
+        run: >-
+          xcodebuild -project LaunchDeck.xcodeproj -scheme LaunchDeck
+          -configuration Release -derivedDataPath "$RUNNER_TEMP/LaunchDeckRelease"
+          ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO build
+
+      - name: Validate release metadata
+        run: >-
+          bash scripts/validate-release-build.sh
+          "$RUNNER_TEMP/LaunchDeckRelease/Build/Products/Release/LaunchDeck.app"
+
+  benchmark:
+    name: Search performance gate
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run 10k search benchmark
+        run: |
+          mkdir -p .benchmark-results
+          swift run -c release application-index-benchmark --apps 10000 \
+            > .benchmark-results/search-10000.json
+          python3 ../scripts/validate-search-benchmark.py \
+            .benchmark-results/search-10000.json ../Benchmarks/search-thresholds.json
+        working-directory: Core
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-benchmark-10000
+          path: Core/.benchmark-results/search-10000.json

@@ -21,8 +21,10 @@ LaunchDeck is configured for direct Developer ID distribution rather than the Ma
 - Unified local search across apps, files, folders, projects, settings, actions, approved Shortcuts, and recipes
 - Optional structured intent search (type `/`) that selects only validated local targets and registered actions
 - Configurable local document/project roots with dependency, build, hidden, and sensitive-directory exclusions
-- Deterministic local recipes with create/edit/import/export and step-by-step action previews
-- Declarative manifest v1 extensions with explicit permissions and no arbitrary code execution
+- Deterministic local recipes with conditions, retries, optional steps, delays, output variables, execution logs, and action previews
+- Declarative manifest v1/v2 extensions with integrity records, upgrade permission review, and no arbitrary code execution
+- Native file actions for rename, move, duplicate, ZIP compression, Finder tags, and recoverable Trash deletion
+- Window layouts covering halves, quarters, multiple displays, centering, maximizing, and frame restore
 - Recently launched and most-launched sorting, with hidden apps support
 - Menu bar entry + global hotkey to summon instantly
 
@@ -86,7 +88,17 @@ The script increments the latest semantic-version patch, updates the Xcode marke
 
 ## Privacy and action safety
 
-Application indexes, organization, recipes, launch history, recent documents, and the latest 50 action records stay on the Mac. Recent documents retain at most 30 entries. Settings includes a single reset for launch, action, and recent-document history. LaunchDeck actions are typed and validated: AI output cannot invent target or action identifiers, file/directory types are checked before execution, system settings use fixed destinations, and Shortcuts—including those inside imported recipes—must be explicitly approved. Elevated actions show a full preview and require confirmation.
+Application indexes, organization, recipes, launch history, recent documents, and action records stay on the Mac. LaunchDeck actions are typed and validated: AI output cannot invent target or action identifiers, file/directory types are checked before execution, system settings use fixed destinations, and Shortcuts—including those inside imported recipes—must be explicitly approved. Elevated actions show a full preview and require confirmation.
+
+| Local data | Default / retention | Reset |
+| --- | --- | --- |
+| Clipboard text | Disabled; when enabled, 200 entries, 20,000 characters each, user-selected 1/7/30-day retention | Clipboard clear or unified behavioral-data reset |
+| Recent documents | Up to 30 entries | Unified behavioral-data reset |
+| Action history | Latest 50 actions | Unified behavioral-data reset |
+| Recipe execution logs | Latest 50 executions | Recipe log clear or unified behavioral-data reset |
+| Search learning and recent queries | Local until reset | Unified behavioral-data reset |
+
+Clipboard monitoring excludes supported password managers and user-configured bundle identifiers. Accessibility is requested only for explicit window commands and is not used to inspect window contents.
 
 ## Performance benchmark
 

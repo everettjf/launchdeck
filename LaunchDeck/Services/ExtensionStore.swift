@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 import LaunchDeckCore
 
@@ -13,13 +14,28 @@ final class ExtensionStore: ObservableObject {
         reload()
     }
 
-    func install(data: Data) throws {
+    func install(data: Data, allowPermissionExpansion: Bool = false) throws {
         let manifest = try JSONDecoder().decode(ExtensionManifest.self, from: data)
         let errors = ExtensionManifestValidation.errors(in: manifest)
         guard errors.isEmpty else { throw ExtensionStoreError.invalid(errors.joined(separator: "\n")) }
+        if let minimum = manifest.minimumLaunchDeckVersion,
+           compareVersions(minimum, currentLaunchDeckVersion) == .orderedDescending {
+            throw ExtensionStoreError.incompatible("Requires LaunchDeck \(minimum) or later.")
+        }
+        if let existing = manifests.first(where: { $0.id == manifest.id }) {
+            guard compareVersions(manifest.version, existing.version) != .orderedAscending else {
+                throw ExtensionStoreError.downgrade(existing: existing.version, proposed: manifest.version)
+            }
+            let added = manifest.permissions.subtracting(existing.permissions)
+            if !added.isEmpty, !allowPermissionExpansion { throw ExtensionStoreError.permissionExpansion(added) }
+        }
         let target = directory.appendingPathComponent(manifest.id, isDirectory: true)
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         try data.write(to: target.appendingPathComponent("manifest.json"), options: .atomic)
+        let record = ExtensionInstallationRecord(version: manifest.version,
+                                                 sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+                                                 installedAt: .now)
+        try JSONEncoder().encode(record).write(to: target.appendingPathComponent("installation.json"), options: .atomic)
         reload()
     }
 
@@ -27,6 +43,14 @@ final class ExtensionStore: ObservableObject {
         guard manifests.contains(where: { $0.id == id }) else { return }
         try FileManager.default.removeItem(at: directory.appendingPathComponent(id, isDirectory: true))
         reload()
+    }
+
+    func exportData(id: String) throws -> Data {
+        guard manifests.contains(where: { $0.id == id }) else {
+            throw ExtensionStoreError.invalid("The extension is no longer installed.")
+        }
+        return try Data(contentsOf: directory.appendingPathComponent(id, isDirectory: true)
+            .appendingPathComponent("manifest.json"))
     }
 
     func searchItems(matching rawQuery: String) -> [SearchItem] {
@@ -65,9 +89,34 @@ final class ExtensionStore: ObservableObject {
             .filter { ExtensionManifestValidation.errors(in: $0).isEmpty }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
+
+    private var currentLaunchDeckVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.6.0"
+    }
+
+    private func compareVersions(_ lhs: String, _ rhs: String) -> ComparisonResult {
+        lhs.compare(rhs, options: .numeric)
+    }
 }
 
-enum ExtensionStoreError: LocalizedError {
+nonisolated struct ExtensionInstallationRecord: Codable, Hashable, Sendable {
+    let version: String
+    let sha256: String
+    let installedAt: Date
+}
+
+enum ExtensionStoreError: LocalizedError, Equatable {
     case invalid(String)
-    var errorDescription: String? { if case .invalid(let message) = self { message } else { nil } }
+    case incompatible(String)
+    case downgrade(existing: String, proposed: String)
+    case permissionExpansion(Set<ExtensionManifest.Permission>)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalid(let message), .incompatible(let message): message
+        case .downgrade(let existing, let proposed): "Refusing to downgrade extension from \(existing) to \(proposed)."
+        case .permissionExpansion(let permissions):
+            "This update adds permissions: \(permissions.map(\.rawValue).sorted().joined(separator: ", "))."
+        }
+    }
 }
