@@ -7,7 +7,6 @@ struct FolderTile: View {
     let folder: AppCollectionItem.Folder
     var isDropTarget: Bool = false
     var isReorderTarget: Bool = false
-    var onSizeChange: ((CGSize) -> Void)? = nil
 
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var preferences: AppPreferences
@@ -20,14 +19,12 @@ struct FolderTile: View {
     init(itemID: String,
          folder: AppCollectionItem.Folder,
          isDropTarget: Bool = false,
-         isReorderTarget: Bool = false,
-         onSizeChange: ((CGSize) -> Void)? = nil) {
+         isReorderTarget: Bool = false) {
         self.itemID = itemID
         self.folder = folder
         self._draftName = State(initialValue: folder.name)
         self.isDropTarget = isDropTarget
         self.isReorderTarget = isReorderTarget
-        self.onSizeChange = onSizeChange
     }
 
     private var iconSize: CGFloat {
@@ -80,15 +77,6 @@ struct FolderTile: View {
         .onHover { hovering in
             isHovering = hovering
         }
-        .background(
-            GeometryReader { geometry in
-                Color.clear
-                    .onAppear { onSizeChange?(geometry.size) }
-                    .onChange(of: geometry.size) { _, newSize in
-                        onSizeChange?(newSize)
-                    }
-            }
-        )
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             FolderPopoverContent(folder: folder,
                                  itemID: itemID,
@@ -135,19 +123,19 @@ struct FolderTile: View {
         if isReorderTarget {
             return Color.accentColor.opacity(0.24)
         }
-        return Color.black.opacity(isHovering ? 0.18 : 0.08)
+        return isHovering ? Color.black.opacity(0.18) : .clear
     }
 
     private var shadowRadius: CGFloat {
         if isDropTarget { return 18 }
         if isReorderTarget { return 14 }
-        return isHovering ? 10 : 3
+        return isHovering ? 10 : 0
     }
 
     private var shadowOffset: CGFloat {
         if isDropTarget { return 12 }
         if isReorderTarget { return 10 }
-        return isHovering ? 8 : 3
+        return isHovering ? 8 : 0
     }
 
     private var borderColor: Color {

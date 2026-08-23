@@ -10,7 +10,6 @@ struct ApplicationsGridView: View {
     @State private var draggingItemID: String?
     @State private var folderCreationTargetID: String?
     @State private var folderAppendTargetID: String?
-    @State private var itemSizes: [String: CGSize] = [:]
     @State private var reorderTargetID: String?
 
     private var columns: [GridItem] {
@@ -56,16 +55,14 @@ struct ApplicationsGridView: View {
             if let identifier = item.appIdentifier, let app = appState.app(for: identifier) {
                 AppTile(app: app,
                         isDropTarget: isDragEnabled ? folderCreationTargetID == item.id : false,
-                        isReorderTarget: isDragEnabled ? reorderTargetID == item.id : false,
-                        onSizeChange: { size in itemSizes[item.id] = size })
+                        isReorderTarget: isDragEnabled ? reorderTargetID == item.id : false)
             }
         case .folder:
             if let folder = item.folder {
                 FolderTile(itemID: item.id,
                            folder: folder,
                            isDropTarget: isDragEnabled ? folderAppendTargetID == item.id : false,
-                           isReorderTarget: isDragEnabled ? reorderTargetID == item.id : false,
-                           onSizeChange: { size in itemSizes[item.id] = size })
+                           isReorderTarget: isDragEnabled ? reorderTargetID == item.id : false)
             }
         }
     }
@@ -81,7 +78,7 @@ struct ApplicationsGridView: View {
                     return NSItemProvider(object: item.id as NSString)
                 }
                 .onDrop(of: [.text], delegate: ApplicationsDropDelegate(item: item,
-                                                                         tileSize: itemSizes[item.id] ?? .init(width: preferences.gridScale.minimumTileWidth + 8, height: preferences.gridScale.minimumTileWidth + 32),
+                                                                         tileSize: dropTargetSize,
                                                                          draggingItemID: $draggingItemID,
                                                                          folderCreationTargetID: $folderCreationTargetID,
                                                                          folderAppendTargetID: $folderAppendTargetID,
@@ -90,6 +87,11 @@ struct ApplicationsGridView: View {
         } else {
             content(for: item, isDragEnabled: false)
         }
+    }
+
+    private var dropTargetSize: CGSize {
+        CGSize(width: preferences.gridScale.minimumTileWidth + 8,
+               height: preferences.gridScale.iconSize + 72)
     }
 }
 

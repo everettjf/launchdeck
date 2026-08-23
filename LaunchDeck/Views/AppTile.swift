@@ -16,7 +16,6 @@ struct AppTile: View {
     var folderID: String? = nil
     var isDropTarget: Bool = false
     var isReorderTarget: Bool = false
-    var onSizeChange: ((CGSize) -> Void)? = nil
 
     private var tileWidth: CGFloat {
         preferences.gridScale.minimumTileWidth + 8
@@ -73,9 +72,6 @@ struct AppTile: View {
         .onChange(of: preferences.gridScale) { _, _ in
             loadIcon()
         }
-        .background(SizeReader(onChange: { size in
-            onSizeChange?(size)
-        }))
         .contextMenu {
             Button(appState.isFavorite(app) ? "Remove from Favorites" : "Add to Favorites") {
                 appState.toggleFavorite(for: app)
@@ -130,22 +126,22 @@ struct AppTile: View {
             return Color.accentColor.opacity(0.24)
         }
         if colorScheme == .dark {
-            return Color.black.opacity(isHovering ? 0.18 : 0.08)
+            return isHovering ? Color.black.opacity(0.18) : .clear
         } else {
-            return Color.black.opacity(isHovering ? 0.12 : 0.06)
+            return isHovering ? Color.black.opacity(0.12) : .clear
         }
     }
 
     private var shadowRadius: CGFloat {
         if isDropTarget { return 18 }
         if isReorderTarget { return 14 }
-        return isHovering ? 10 : 3
+        return isHovering ? 10 : 0
     }
 
     private var shadowOffset: CGFloat {
         if isDropTarget { return 12 }
         if isReorderTarget { return 10 }
-        return isHovering ? 8 : 3
+        return isHovering ? 8 : 0
     }
 
     private var borderColor: Color {
@@ -199,22 +195,6 @@ struct AppTile: View {
     private func loadIcon() {
         AppIconCache.shared.icon(for: app.path, size: preferences.gridScale.iconSize) { image in
             icon = image
-        }
-    }
-}
-
-private struct SizeReader: View {
-    var onChange: (CGSize) -> Void
-
-    var body: some View {
-        GeometryReader { geometry in
-            Color.clear
-                .onAppear {
-                    onChange(geometry.size)
-                }
-                .onChange(of: geometry.size) { _, newValue in
-                    onChange(newValue)
-                }
         }
     }
 }
