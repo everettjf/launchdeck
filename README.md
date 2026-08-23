@@ -34,7 +34,7 @@ LaunchDeck is configured for direct Developer ID distribution rather than the Ma
 
 ## Requirements
 
-- macOS 15.0+
+- macOS 26.0+
 - Xcode 26.0+ and XcodeGen (local build)
 - Intent search requires macOS 26, Apple Intelligence-capable hardware, and an available on-device model
 

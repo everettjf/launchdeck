@@ -17,8 +17,8 @@ enum FileOperationError: LocalizedError, Equatable {
     }
 }
 
-nonisolated struct FileUndoRecord: Sendable {
-    nonisolated struct Move: Sendable { let source: URL; let destination: URL }
+nonisolated struct FileUndoRecord: Codable, Hashable, Sendable {
+    nonisolated struct Move: Codable, Hashable, Sendable { let source: URL; let destination: URL }
     let title: String
     let moves: [Move]
     let createdURLs: [URL]

@@ -93,23 +93,39 @@ nonisolated struct Recipe: Codable, Hashable, Identifiable, Sendable {
     var name: String
     var variables: [RecipeVariable]
     var steps: [RecipeStep]
+    var schemaVersion: Int
+    var workflow: WorkflowDefinition?
 
     init(id: UUID = UUID(), name: String, variables: [RecipeVariable] = [], steps: [RecipeStep]) {
         self.id = id
         self.name = name
         self.variables = variables
         self.steps = steps
+        schemaVersion = 1
+        workflow = nil
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, variables, steps }
+    init(workflow: WorkflowDefinition) {
+        id = workflow.id
+        name = workflow.name
+        variables = workflow.variables
+        steps = []
+        schemaVersion = WorkflowDefinition.currentSchemaVersion
+        self.workflow = workflow
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, variables, steps, schemaVersion, workflow }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         variables = try container.decodeIfPresent([RecipeVariable].self, forKey: .variables) ?? []
-        steps = try container.decode([RecipeStep].self, forKey: .steps)
+        steps = try container.decodeIfPresent([RecipeStep].self, forKey: .steps) ?? []
+        workflow = try container.decodeIfPresent(WorkflowDefinition.self, forKey: .workflow)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? (workflow == nil ? 1 : 2)
     }
+    var resolvedWorkflow: WorkflowDefinition { workflow ?? RecipeV1Migrator.migrate(self) }
 }
 
 nonisolated enum RecipeValidation {
@@ -117,7 +133,11 @@ nonisolated enum RecipeValidation {
 
     static func error(for recipe: Recipe) -> String? {
         if recipe.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Recipe name is required." }
-        if recipe.steps.isEmpty { return "A recipe must contain at least one step." }
+        if recipe.steps.isEmpty, recipe.workflow == nil { return "A recipe must contain at least one step or workflow node." }
+        if let workflow = recipe.workflow,
+           let issue = WorkflowValidator.validate(workflow).first(where: { $0.severity == .error }) {
+            return issue.message
+        }
         if recipe.steps.count > maximumSteps { return "A recipe can contain at most \(maximumSteps) steps." }
         if Set(recipe.steps.map(\.id)).count != recipe.steps.count { return "Recipe step identifiers must be unique." }
         if recipe.steps.contains(where: { $0.retryCount < 0 || $0.retryCount > 5 }) { return "Recipe retry counts must be between 0 and 5." }

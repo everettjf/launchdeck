@@ -58,6 +58,19 @@ struct LaunchDeckApp: App {
                 }
             }
         }
+        WindowGroup("Recipe Studio", id: "recipe-studio") {
+            RecipeStudioView()
+                .environmentObject(appState)
+                .environmentObject(preferences)
+                .frame(minWidth: 980, minHeight: 680)
+        }
+        .defaultSize(width: 1320, height: 820)
+        .commands {
+            CommandGroup(after: .newItem) {
+                OpenWindowButton(title: "New Recipe", systemImage: "square.stack.3d.up", windowID: "recipe-studio")
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+        }
         Settings {
             SettingsView()
                 .environmentObject(appState)
@@ -93,5 +106,16 @@ struct LaunchDeckApp: App {
         if let url = URL(string: "mailto:xnuapp@gmail.com?subject=\(encodedSubject)&body=\(encodedBody)") {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+private struct OpenWindowButton: View {
+    let title: String
+    let systemImage: String
+    let windowID: String
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(title, systemImage: systemImage) { openWindow(id: windowID) }
     }
 }

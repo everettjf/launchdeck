@@ -24,6 +24,10 @@ final class AppState: ObservableObject {
     let recipeExecutionLogStore: RecipeExecutionLogStore
     let quicklinkStore: QuicklinkStore
     let clipboardStore: ClipboardStore
+    let workflowReceiptStore: WorkflowReceiptStore
+    let workflowAITranscriptStore: WorkflowAITranscriptStore
+    let workflowAIService: WorkflowAIService
+    let workflowExecutionEngine: WorkflowExecutionEngine
     private let fileOperationService = FileOperationService()
     private let objectActionPerformer = ObjectActionPerformer()
     private let objectUndoManager = UndoManager()
@@ -104,6 +108,14 @@ final class AppState: ObservableObject {
         let clipboardStore = ClipboardStore()
         let snippetStore = SnippetStore()
         let extensionStore = ExtensionStore()
+        let workflowReceiptStore = WorkflowReceiptStore()
+        let workflowAITranscriptStore = WorkflowAITranscriptStore()
+        let workflowAIService = WorkflowAIService { entry in
+            await MainActor.run { workflowAITranscriptStore.append(entry) }
+        }
+        let workflowNodeExecutor = DefaultWorkflowNodeExecutor(AI: workflowAIService)
+        let workflowExecutionEngine = WorkflowExecutionEngine(executor: workflowNodeExecutor,
+                                                              receiptStore: workflowReceiptStore)
         self.layoutController = layoutController
         self.searchController = searchController
         self.actionController = actionController
@@ -113,7 +125,12 @@ final class AppState: ObservableObject {
         self.clipboardStore = clipboardStore
         self.snippetStore = snippetStore
         self.extensionStore = extensionStore
+        self.workflowReceiptStore = workflowReceiptStore
+        self.workflowAITranscriptStore = workflowAITranscriptStore
+        self.workflowAIService = workflowAIService
+        self.workflowExecutionEngine = workflowExecutionEngine
         self.recentSearchQueries = searchLearningStore.snapshot.recentQueries
+        workflowNodeExecutor.instantSendProvider = { [weak self] in self?.instantSendObjects ?? [] }
 
         // Forward controller changes so views observing AppState stay live
         layoutController.objectWillChange
@@ -576,7 +593,18 @@ final class AppState: ObservableObject {
             action = SystemSettingsDestination(rawValue: identifier).map { .openSystemSettings(destination: $0) }
         case .shortcut(let name): action = .runShortcut(name: name)
         case .recipe(let identifier):
-            action = recipeStore.recipes.first(where: { $0.id == identifier }).map { .runRecipe(identifier: $0.id, name: $0.name, steps: $0.steps) }
+            if let recipe = recipeStore.recipes.first(where: { $0.id == identifier }), recipe.workflow != nil {
+                Task { [weak self] in
+                    guard let self else { return }
+                    let receipt = await self.workflowExecutionEngine.run(recipe.resolvedWorkflow)
+                    if !receipt.succeeded {
+                        self.actionController.presentError(receipt.nodes.last?.error ?? "The workflow could not run.")
+                    }
+                }
+                action = nil
+            } else {
+                action = recipeStore.recipes.first(where: { $0.id == identifier }).map { .runRecipe(identifier: $0.id, name: $0.name, steps: $0.steps) }
+            }
         case .copyText(let value):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(value, forType: .string)

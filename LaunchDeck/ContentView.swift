@@ -15,7 +15,6 @@ struct ContentView: View {
     @State private var newFolderName: String = ""
     @State private var searchSelection = SearchSelection()
     @State private var pendingRecipe: Recipe?
-    @State private var editingRecipe: Recipe?
     @State private var actionPanelItem: SearchItem?
     @State private var selectedKinds = Set(SearchItemKind.allCases)
     @State private var selectedObjectIDs = Set<String>()
@@ -75,12 +74,6 @@ struct ContentView: View {
         .sheet(item: $pendingRecipe) { recipe in
             RecipeRunView(recipe: recipe) { values in
                 run(recipe, values: values)
-            }
-        }
-        .sheet(item: $editingRecipe) { recipe in
-            RecipeEditorView(recipe: recipe, applications: appState.allApps(),
-                             approvedShortcuts: preferences.approvedShortcuts) { updated in
-                (try? appState.recipeStore.save(updated)) != nil
             }
         }
         .sheet(item: $actionPanelItem) { item in
@@ -263,9 +256,9 @@ struct ContentView: View {
                         Label("New Folder", systemImage: "folder.badge.plus")
                     }
                     Button {
-                        editingRecipe = Recipe(name: "New Recipe", steps: [])
+                        openWindow(id: "recipe-studio")
                     } label: {
-                        Label("New Recipe", systemImage: "list.bullet.rectangle")
+                        Label("New Recipe Studio", systemImage: "square.stack.3d.up")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
