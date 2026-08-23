@@ -46,6 +46,14 @@ brew install --cask everettjf/tap/launchdeck
 
 Upgrade later with `brew upgrade --cask launchdeck`. The Homebrew build is signed with Developer ID and notarized by Apple. You can also download the latest ZIP from [GitHub Releases](https://github.com/everettjf/launchdeck/releases/latest).
 
+## AI providers
+
+LaunchDeck keeps Apple Foundation Models as its on-device default. Recipe Studio can also use an OpenAI-compatible chat-completions endpoint (including OpenAI, OpenRouter, DeepSeek, Ollama, and LM Studio) or the Anthropic Messages API.
+
+Configure the protocol, endpoint, model, and API key under **Recipe Studio → External AI Provider**, then save and test the connection. API keys live in macOS Keychain and are never included in recipes, receipts, or AI history. Remote endpoints must use HTTPS; HTTP is accepted only for loopback endpoints. External routing remains opt-in through each recipe's model and data policy.
+
+The Homebrew build does not depend on App Store-only PCC entitlements.
+
 ## Build Locally
 
 1. Install XcodeGen: `brew install xcodegen`

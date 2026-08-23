@@ -181,17 +181,33 @@ nonisolated struct WorkflowEdge: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-nonisolated enum WorkflowModelPolicy: String, Codable, CaseIterable, Hashable, Sendable {
+nonisolated enum WorkflowModelPolicy: String, CaseIterable, Hashable, Sendable {
     case automatic
     case onDeviceOnly
     case preferOnDevice
-    case privateCloudCompute
+    case externalProvider
 }
 
-nonisolated enum WorkflowDataPolicy: String, Codable, CaseIterable, Hashable, Sendable {
+extension WorkflowModelPolicy: Codable {
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        self = value == "privateCloudCompute" ? .externalProvider : (Self(rawValue: value) ?? .automatic)
+    }
+    func encode(to encoder: Encoder) throws { var container = encoder.singleValueContainer(); try container.encode(rawValue) }
+}
+
+nonisolated enum WorkflowDataPolicy: String, CaseIterable, Hashable, Sendable {
     case localOnly
-    case privateCloudAllowed
+    case externalProviderAllowed
     case askEveryTime
+}
+
+extension WorkflowDataPolicy: Codable {
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        self = value == "privateCloudAllowed" ? .externalProviderAllowed : (Self(rawValue: value) ?? .localOnly)
+    }
+    func encode(to encoder: Encoder) throws { var container = encoder.singleValueContainer(); try container.encode(rawValue) }
 }
 
 nonisolated struct WorkflowPolicy: Codable, Hashable, Sendable {

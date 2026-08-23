@@ -4,7 +4,7 @@
 
 LaunchDeck 2.0 turns local objects and registered actions into typed, inspectable workflows. A workflow can be assembled as vertical blocks, generated as a draft by Apple Foundation Models, or edited on a free graph canvas. AI proposes data and plans; the validator and executor remain the only authority that can run tools.
 
-The minimum supported system is macOS 26. On macOS 26, AI uses `SystemLanguageModel` on device. On macOS 27 and later, an explicitly cloud-eligible block may use `PrivateCloudComputeLanguageModel` when PCC is available and below quota. Deterministic workflows remain fully usable when Apple Intelligence or PCC is unavailable.
+The minimum supported system is macOS 26. AI uses `SystemLanguageModel` on device when available. Users may explicitly configure an OpenAI-compatible or Anthropic provider for larger or selected jobs. Deterministic workflows remain fully usable when AI is unavailable.
 
 ## Required deliverables
 
@@ -13,14 +13,14 @@ The minimum supported system is macOS 26. On macOS 26, AI uses `SystemLanguageMo
 3. **Vertical block editor** — searchable block library, outline assembly, drag/reorder, inspector, errors, variables, console, and keyboard commands.
 4. **On-device AI blocks** — classification, extraction, summarization, rewrite, filename generation, structured generation, privacy policy, and transcript metadata.
 5. **Workflow Copilot** — natural-language-to-draft using guided generation, trusted catalog resolution, assumptions, unresolved inputs, diff, and explicit acceptance.
-6. **PCC** — managed entitlement, macOS 27 availability and quota checks, visible routing, reasoning level, explicit privacy permission, and local fallback.
+6. **Configurable providers** — Keychain-backed credentials, HTTPS validation, visible routing, explicit data permission, connection testing, and local fallback.
 7. **Free graph canvas** — pan/zoom, node positioning, typed connections, selection, keyboard movement, accessible alternative outline, and automatic layout.
 
 ## Non-negotiable invariants
 
 - Models never invent executable action identifiers; every node resolves through `WorkflowNodeCatalog`.
-- Models never grant their own tool or PCC permission.
-- Remote execution is never silent. Every model result records `deterministic`, `onDevice`, or `privateCloudCompute`.
+- Models never grant their own tool or provider permission.
+- Remote execution is never silent. Every model result records `deterministic`, `onDevice`, or `externalProvider`.
 - File mutations run inside a transaction when the action supports undo. Partial failure triggers rollback.
 - A draft never executes automatically. Validation and dry run precede every mutating run.
 - Stable UUID identity is used across lists, drag sessions, graph layout, receipts, and persisted documents.
@@ -56,12 +56,12 @@ The minimum supported system is macOS 26. On macOS 26, AI uses `SystemLanguageMo
 - Show model availability and route in the editor and receipt.
 - Preserve complete deterministic behavior when models are unavailable.
 
-### M5 — Copilot and PCC
+### M5 — Copilot and configurable providers
 
 - Generate valid drafts for the checked-in evaluation corpus.
 - Reject every unknown block/action/tool ID.
 - Require explicit acceptance of draft changes.
-- On macOS 27, route PCC-eligible requests only when the workflow policy allows it and PCC reports available quota.
+- Route provider-eligible requests only when workflow policy permits it and a validated provider is enabled.
 - Fall back to on-device only when the task fits and policy permits; otherwise return an actionable error.
 
 ### M6 — Quality gates
@@ -73,7 +73,7 @@ The minimum supported system is macOS 26. On macOS 26, AI uses `SystemLanguageMo
 
 ## Delivery order
 
-Schema → validator → executor/receipts → vertical editor → on-device AI → Copilot → PCC → graph canvas → performance and release audit.
+Schema → validator → executor/receipts → vertical editor → on-device AI → Copilot → providers → graph canvas → performance and release audit.
 
 ## Implementation status
 
@@ -82,7 +82,7 @@ Schema → validator → executor/receipts → vertical editor → on-device AI 
 - [x] Keyboard-accessible vertical block editor with library, inspector, variables, validation, and run console
 - [x] On-device guided-generation AI blocks with availability and route visibility
 - [x] Workflow Copilot with catalog-constrained drafts, assumptions, unresolved inputs, and accept/reject review
-- [x] PCC entitlement, availability/quota gates, reasoning levels, per-block approval, and local-only policy
+- [x] OpenAI-compatible and Anthropic providers, Keychain credentials, endpoint validation, per-block approval, and local-only policy
 - [x] Free graph canvas with zoom, scrolling/panning, typed connection menus, node dragging, and automatic layout
 - [x] Schema/editor/execution/routing/rollback/cancellation/performance tests and unsigned Release build audit
-- [ ] Signed PCC build verification — Xcode currently reports that the refreshed provisioning profile for `com.everettjf.launchdeck` does not contain the granted managed entitlement
+- [x] Developer ID-signed universal Release verification; Homebrew publication remains the release channel

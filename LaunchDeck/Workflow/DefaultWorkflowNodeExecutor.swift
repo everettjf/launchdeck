@@ -90,11 +90,10 @@ final class DefaultWorkflowNodeExecutor: WorkflowNodeExecuting {
             let instruction = inputs["prompt"]?.stringValue ?? node.configuration["prompt"]?.stringValue ?? node.title
             let policy = node.configuration["modelPolicy"]?.stringValue.flatMap(WorkflowModelPolicy.init(rawValue:)) ?? workflow.policy.modelPolicy
             let dataPolicy = node.configuration["dataPolicy"]?.stringValue.flatMap(WorkflowDataPolicy.init(rawValue:)) ?? workflow.policy.dataPolicy
-            let approved = node.configuration["pccApproved"] == .boolean(true)
-            let reasoning = node.configuration["reasoning"]?.stringValue ?? "moderate"
+            let approved = node.configuration["providerApproved"] == .boolean(true) || node.configuration["pccApproved"] == .boolean(true)
             let result = try await AI.execute(task: task, input: input, instruction: instruction,
                                               modelPolicy: policy, dataPolicy: dataPolicy,
-                                              pccApproved: approved, reasoning: reasoning)
+                                              providerApproved: approved)
             return .init(outputs: ["result": result.value, "control": .none], route: result.route, undoOperation: nil)
         case let identifier where identifier.hasPrefix("action."):
             return try executeAction(identifier: identifier, inputs: inputs)

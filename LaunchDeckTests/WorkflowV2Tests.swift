@@ -86,25 +86,52 @@ final class WorkflowSchemaV2Tests: XCTestCase {
 }
 
 final class WorkflowModelRouterTests: XCTestCase {
-    func testLocalOnlyNeverRoutesToPCC() {
+    func testLocalOnlyNeverRoutesToProvider() {
         XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 10_000, modelPolicy: .automatic,
-                                                  dataPolicy: .localOnly, pccApproved: false), .onDevice)
-        XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 100, modelPolicy: .privateCloudCompute,
-                                                  dataPolicy: .localOnly, pccApproved: true), .forbiddenByLocalPolicy)
+                                                  dataPolicy: .localOnly, providerApproved: false, providerAvailable: true), .onDevice)
+        XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 100, modelPolicy: .externalProvider,
+                                                  dataPolicy: .localOnly, providerApproved: true, providerAvailable: true), .forbiddenByLocalPolicy)
     }
 
-    func testExplicitPCCRequiresApprovalWhenPolicyAsksEveryTime() {
-        XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 100, modelPolicy: .privateCloudCompute,
-                                                  dataPolicy: .askEveryTime, pccApproved: false), .approvalRequired)
-        XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 100, modelPolicy: .privateCloudCompute,
-                                                  dataPolicy: .askEveryTime, pccApproved: true), .privateCloudCompute)
+    func testExplicitProviderRequiresApprovalWhenPolicyAsksEveryTime() {
+        XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 100, modelPolicy: .externalProvider,
+                                                  dataPolicy: .askEveryTime, providerApproved: false, providerAvailable: true), .approvalRequired)
+        XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 100, modelPolicy: .externalProvider,
+                                                  dataPolicy: .askEveryTime, providerApproved: true, providerAvailable: true), .externalProvider)
     }
 
-    func testAutomaticUsesPCCOnlyForLargeEligiblePrompts() {
+    func testAutomaticUsesProviderOnlyForLargeEligiblePrompts() {
         XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 3_000, modelPolicy: .automatic,
-                                                  dataPolicy: .privateCloudAllowed, pccApproved: false), .onDevice)
+                                                  dataPolicy: .externalProviderAllowed, providerApproved: false, providerAvailable: true), .onDevice)
         XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 3_500, modelPolicy: .automatic,
-                                                  dataPolicy: .privateCloudAllowed, pccApproved: false), .privateCloudCompute)
+                                                  dataPolicy: .externalProviderAllowed, providerApproved: false, providerAvailable: true), .externalProvider)
+    }
+}
+
+final class AIProviderConfigurationTests: XCTestCase {
+    func testRemoteEndpointRequiresHTTPS() {
+        var configuration = AIProviderConfiguration()
+        configuration.endpoint = "http://example.com/v1/chat/completions"
+        XCTAssertNotNil(configuration.validationMessage)
+        configuration.endpoint = "http://localhost:11434/v1/chat/completions"
+        XCTAssertNil(configuration.validationMessage)
+        XCTAssertTrue(configuration.isLoopback)
+    }
+
+    func testProviderConfigurationDoesNotContainAPIKey() throws {
+        let data = try JSONEncoder().encode(AIProviderConfiguration())
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).localizedCaseInsensitiveContains("apiKey"))
+    }
+
+    func testLegacyPCCPoliciesAndRouteMigrate() throws {
+        XCTAssertEqual(try JSONDecoder().decode(WorkflowModelPolicy.self, from: Data("\"privateCloudCompute\"".utf8)), .externalProvider)
+        XCTAssertEqual(try JSONDecoder().decode(WorkflowDataPolicy.self, from: Data("\"privateCloudAllowed\"".utf8)), .externalProviderAllowed)
+        XCTAssertEqual(try JSONDecoder().decode(WorkflowModelRoute.self, from: Data("\"privateCloudCompute\"".utf8)), .externalProvider)
+    }
+
+    func testJSONDecoderAcceptsFencedProviderOutput() throws {
+        struct Response: Decodable { let ok: Bool }
+        XCTAssertTrue(try AIProviderClient.decodeJSON(Response.self, from: "```json\n{\"ok\":true}\n```").ok)
     }
 }
 

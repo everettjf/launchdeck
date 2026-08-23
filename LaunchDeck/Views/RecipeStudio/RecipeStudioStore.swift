@@ -174,7 +174,7 @@ final class RecipeStudioStore {
         do {
             copilotDraft = try await service.createDraft(description: copilotPrompt,
                                                          policy: workflow.policy,
-                                                         pccApproved: workflow.policy.dataPolicy == .privateCloudAllowed)
+                                                         providerApproved: workflow.policy.dataPolicy == .externalProviderAllowed)
         } catch { message = error.localizedDescription }
     }
 

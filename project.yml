@@ -35,14 +35,13 @@ targets:
         PRODUCT_NAME: "$(TARGET_NAME)"
         MARKETING_VERSION: "2.0.0"
         CURRENT_PROJECT_VERSION: "2000"
-        CODE_SIGN_ENTITLEMENTS: LaunchDeck/LaunchDeck.entitlements
         SWIFT_VERSION: "5.0"
         DEVELOPMENT_TEAM: YPV49M8592
         CODE_SIGN_STYLE: Automatic
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_INCOMING_NETWORK_CONNECTIONS: NO
-        ENABLE_OUTGOING_NETWORK_CONNECTIONS: NO
+        ENABLE_OUTGOING_NETWORK_CONNECTIONS: YES
         ENABLE_PREVIEWS: YES
         ENABLE_RESOURCE_ACCESS_AUDIO_INPUT: NO
         ENABLE_RESOURCE_ACCESS_BLUETOOTH: NO
@@ -70,10 +69,6 @@ targets:
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
-      configs:
-        Release:
-          CODE_SIGN_IDENTITY: "Developer ID Application"
-
   LaunchDeckTests:
     type: bundle.unit-test
     platform: macOS

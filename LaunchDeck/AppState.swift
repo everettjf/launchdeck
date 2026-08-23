@@ -26,6 +26,7 @@ final class AppState: ObservableObject {
     let clipboardStore: ClipboardStore
     let workflowReceiptStore: WorkflowReceiptStore
     let workflowAITranscriptStore: WorkflowAITranscriptStore
+    let AIProviderSettings: AIProviderSettingsStore
     let workflowAIService: WorkflowAIService
     let workflowExecutionEngine: WorkflowExecutionEngine
     private let fileOperationService = FileOperationService()
@@ -110,7 +111,10 @@ final class AppState: ObservableObject {
         let extensionStore = ExtensionStore()
         let workflowReceiptStore = WorkflowReceiptStore()
         let workflowAITranscriptStore = WorkflowAITranscriptStore()
-        let workflowAIService = WorkflowAIService { entry in
+        let AIProviderSettings = AIProviderSettingsStore()
+        let workflowAIService = WorkflowAIService(providerLoader: {
+            await MainActor.run { AIProviderSettings.runtimeConfiguration }
+        }) { entry in
             await MainActor.run { workflowAITranscriptStore.append(entry) }
         }
         let workflowNodeExecutor = DefaultWorkflowNodeExecutor(AI: workflowAIService)
@@ -127,6 +131,7 @@ final class AppState: ObservableObject {
         self.extensionStore = extensionStore
         self.workflowReceiptStore = workflowReceiptStore
         self.workflowAITranscriptStore = workflowAITranscriptStore
+        self.AIProviderSettings = AIProviderSettings
         self.workflowAIService = workflowAIService
         self.workflowExecutionEngine = workflowExecutionEngine
         self.recentSearchQueries = searchLearningStore.snapshot.recentQueries

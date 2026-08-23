@@ -2,10 +2,18 @@ import AppKit
 import Combine
 import Foundation
 
-nonisolated enum WorkflowModelRoute: String, Codable, Hashable, Sendable {
+nonisolated enum WorkflowModelRoute: String, Hashable, Sendable {
     case deterministic
     case onDevice
-    case privateCloudCompute
+    case externalProvider
+}
+
+extension WorkflowModelRoute: Codable {
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        self = value == "privateCloudCompute" ? .externalProvider : (Self(rawValue: value) ?? .deterministic)
+    }
+    func encode(to encoder: Encoder) throws { var container = encoder.singleValueContainer(); try container.encode(rawValue) }
 }
 
 nonisolated struct WorkflowUndoOperation: Codable, Hashable, Sendable {

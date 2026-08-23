@@ -104,19 +104,19 @@ struct RecipeStudioView: View {
                 Toggle("Dry run before mutations", isOn: Binding(get: { studio.workflow.policy.requiresDryRunBeforeMutation }, set: { studio.workflow.policy.requiresDryRunBeforeMutation = $0 }))
                 Toggle("Rollback on failure", isOn: Binding(get: { studio.workflow.policy.rollbackOnFailure }, set: { studio.workflow.policy.rollbackOnFailure = $0 }))
                 if studio.workflow.policy.dataPolicy != .localOnly {
-                    Label("PCC sends the selected block input to Apple's Private Cloud Compute. Apple states the data is not retained.", systemImage: "lock.shield")
+                    Label("Selected block inputs may be sent to your configured provider. API keys stay in Keychain; prompts and responses are not saved in AI history.", systemImage: "lock.shield")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             if let availability = studio.AIAvailability {
-                Section("Apple Intelligence") {
+                Section("AI") {
                     LabeledContent("On device", value: availability.onDevice)
-                    LabeledContent("Private Cloud Compute", value: availability.privateCloudCompute)
-                    LabeledContent("PCC quota", value: availability.pccQuota)
+                    LabeledContent("External provider", value: appState.AIProviderSettings.configuration.isEnabled ? appState.AIProviderSettings.configuration.name : "Disabled")
                     LabeledContent("Local AI history", value: "\(appState.workflowAITranscriptStore.entries.count) metadata records")
                     Button("Clear AI History", role: .destructive) { appState.workflowAITranscriptStore.clear() }
                 }
             }
+            AIProviderSettingsView(store: appState.AIProviderSettings)
             Section("Variables") {
                 ForEach(Array(studio.workflow.variables.enumerated()), id: \.element.id) { index, variable in
                     VStack(alignment: .leading) {
@@ -211,12 +211,9 @@ struct RecipeStudioView: View {
             TextField("Shortcut name", text: configBinding("shortcut", node: node))
         }
         if node.kindIdentifier.hasPrefix("ai.") {
-            Picker("Reasoning", selection: configBinding("reasoning", node: node)) {
-                Text("Light").tag("light"); Text("Moderate").tag("moderate"); Text("Deep").tag("deep")
-            }
             if studio.workflow.policy.dataPolicy != .localOnly {
-                Toggle("Approve PCC for this block", isOn: boolConfigBinding("pccApproved", node: node))
-                Text("The run receipt records whether this block used on-device AI or PCC.").font(.caption).foregroundStyle(.secondary)
+                Toggle("Approve external provider for this block", isOn: boolConfigBinding("providerApproved", node: node))
+                Text("The run receipt records whether this block used on-device AI or the configured provider.").font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -306,9 +303,9 @@ struct RecipeStudioView: View {
 }
 
 private extension WorkflowModelPolicy {
-    var title: String { switch self { case .automatic: "Automatic"; case .onDeviceOnly: "On-device only"; case .preferOnDevice: "Prefer on-device"; case .privateCloudCompute: "Private Cloud Compute" } }
+    var title: String { switch self { case .automatic: "Automatic"; case .onDeviceOnly: "On-device only"; case .preferOnDevice: "Prefer on-device"; case .externalProvider: "External provider" } }
 }
 
 private extension WorkflowDataPolicy {
-    var title: String { switch self { case .localOnly: "Local only"; case .privateCloudAllowed: "PCC allowed"; case .askEveryTime: "Ask every time" } }
+    var title: String { switch self { case .localOnly: "Local only"; case .externalProviderAllowed: "External provider allowed"; case .askEveryTime: "Ask every time" } }
 }
