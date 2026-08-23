@@ -35,6 +35,7 @@ public enum SearchItemTarget: Codable, Hashable, Sendable {
     case copyText(String)
     case url(URL)
     case systemCommand(String)
+    case clipboardEntry(identifier: UUID)
 }
 
 public struct SearchItem: Identifiable, Codable, Hashable, Sendable {

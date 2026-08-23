@@ -17,6 +17,13 @@ enum FileOperationError: LocalizedError, Equatable {
     }
 }
 
+nonisolated struct FileUndoRecord: Sendable {
+    nonisolated struct Move: Sendable { let source: URL; let destination: URL }
+    let title: String
+    let moves: [Move]
+    let createdURLs: [URL]
+}
+
 struct FileOperationService {
     private let fileManager: FileManager
     private let defaults: UserDefaults
@@ -43,15 +50,29 @@ struct FileOperationService {
 
     func move(_ sources: [URL], to directory: URL) throws -> [URL] {
         var results: [URL] = []
-        for source in sources {
-            try requireSource(source)
-            let destination = directory.appendingPathComponent(source.lastPathComponent)
-            try requireAbsent(destination)
-            try fileManager.moveItem(at: source, to: destination)
-            results.append(destination)
+        do {
+            for source in sources {
+                try requireSource(source)
+                let destination = directory.appendingPathComponent(source.lastPathComponent)
+                try requireAbsent(destination)
+                try fileManager.moveItem(at: source, to: destination)
+                results.append(destination)
+            }
+        } catch {
+            for (destination, original) in zip(results, sources).reversed() where fileManager.fileExists(atPath: destination.path) {
+                try? fileManager.moveItem(at: destination, to: original)
+            }
+            throw error
         }
         rememberDestination(directory)
         return results
+    }
+
+    func moveWithUndo(_ sources: [URL], to directory: URL) throws -> FileUndoRecord {
+        let destinations = try move(sources, to: directory)
+        return FileUndoRecord(title: "Move \(sources.count) Item\(sources.count == 1 ? "" : "s")",
+                              moves: zip(destinations, sources).map { .init(source: $0.0, destination: $0.1) },
+                              createdURLs: [])
     }
 
     func duplicate(_ source: URL) throws -> URL {
@@ -72,6 +93,17 @@ struct FileOperationService {
         }
     }
 
+    func duplicateWithUndo(_ sources: [URL]) throws -> FileUndoRecord {
+        var created: [URL] = []
+        do { for source in sources { created.append(try duplicate(source)) } }
+        catch {
+            created.reversed().forEach { try? fileManager.removeItem(at: $0) }
+            throw error
+        }
+        return FileUndoRecord(title: "Duplicate \(sources.count) Item\(sources.count == 1 ? "" : "s")",
+                              moves: [], createdURLs: created)
+    }
+
     func compress(_ source: URL) throws -> URL {
         try requireSource(source)
         let destination = source.deletingPathExtension().appendingPathExtension("zip")
@@ -90,6 +122,17 @@ struct FileOperationService {
         return destination
     }
 
+    func compressWithUndo(_ sources: [URL]) throws -> FileUndoRecord {
+        var created: [URL] = []
+        do { for source in sources { created.append(try compress(source)) } }
+        catch {
+            created.reversed().forEach { try? fileManager.removeItem(at: $0) }
+            throw error
+        }
+        return FileUndoRecord(title: "Compress \(sources.count) Item\(sources.count == 1 ? "" : "s")",
+                              moves: [], createdURLs: created)
+    }
+
     func setTags(_ tags: [String], on sources: [URL]) throws {
         let normalized = tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         for source in sources {
@@ -98,10 +141,34 @@ struct FileOperationService {
         }
     }
 
-    func moveToTrash(_ sources: [URL]) throws {
-        for source in sources {
-            try requireSource(source)
-            _ = try fileManager.trashItem(at: source, resultingItemURL: nil)
+    @discardableResult
+    func moveToTrash(_ sources: [URL]) throws -> FileUndoRecord {
+        var moves: [FileUndoRecord.Move] = []
+        do {
+            for source in sources {
+                try requireSource(source)
+                var resultingURL: NSURL?
+                try fileManager.trashItem(at: source, resultingItemURL: &resultingURL)
+                if let resultingURL { moves.append(.init(source: resultingURL as URL, destination: source)) }
+            }
+        } catch {
+            for move in moves.reversed() where fileManager.fileExists(atPath: move.source.path) {
+                try? fileManager.moveItem(at: move.source, to: move.destination)
+            }
+            throw error
+        }
+        return FileUndoRecord(title: "Trash \(sources.count) Item\(sources.count == 1 ? "" : "s")",
+                              moves: moves, createdURLs: [])
+    }
+
+    func undo(_ record: FileUndoRecord) throws {
+        for url in record.createdURLs.reversed() where fileManager.fileExists(atPath: url.path) {
+            try fileManager.removeItem(at: url)
+        }
+        for move in record.moves.reversed() {
+            try requireSource(move.source)
+            try requireAbsent(move.destination)
+            try fileManager.moveItem(at: move.source, to: move.destination)
         }
     }
 

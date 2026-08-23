@@ -129,7 +129,7 @@ struct SettingsView: View {
                     }
                 }
             } header: { Text("Clipboard History") }
-              footer: { Text("Disabled by default. Stores text only, up to 200 entries and 20,000 characters per entry. Built-in password managers and your excluded apps are ignored. Data remains on this Mac.").font(.caption) }
+              footer: { Text("Disabled by default. Stores up to 200 text, image, or file-reference entries. Text is capped at 20,000 characters, images at 5 MB, and file selections at 100 items. Built-in password managers and your excluded apps are ignored. Data remains on this Mac.").font(.caption) }
 
             Section {
                 HStack {
@@ -665,6 +665,8 @@ struct RecipeEditorView: View {
                     step.wrappedValue.condition = .valueEquals(lhs: name, rhs: name)
                 case .delay:
                     step.wrappedValue.condition = .valueEquals(lhs: "ready", rhs: "ready")
+                case .objectAction(_, let sources, _):
+                    step.wrappedValue.condition = sources.first.map { .fileExists(path: $0) }
                 }
             }
         )

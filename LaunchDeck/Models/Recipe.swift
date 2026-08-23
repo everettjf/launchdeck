@@ -1,6 +1,9 @@
 import Foundation
 
 nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
+    enum ObjectActionKind: String, Codable, Hashable, Sendable {
+        case open, reveal, copy, paste, openWith, move, duplicate, compress, trash
+    }
     enum FailurePolicy: String, Codable, CaseIterable, Hashable, Sendable { case stop, continueNext }
     enum Condition: Codable, Hashable, Sendable {
         case fileExists(path: String)
@@ -13,6 +16,7 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
         case openTerminal(directory: String)
         case runShortcut(name: String)
         case delay(seconds: Double)
+        case objectAction(kind: ObjectActionKind, sources: [String], target: String?)
     }
 
     let id: UUID
@@ -56,6 +60,9 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
     static func openTerminal(directory: String) -> Self { .init(operation: .openTerminal(directory: directory)) }
     static func runShortcut(name: String) -> Self { .init(operation: .runShortcut(name: name)) }
     static func delay(seconds: Double) -> Self { .init(operation: .delay(seconds: seconds)) }
+    static func objectAction(_ kind: ObjectActionKind, sources: [String], target: String? = nil) -> Self {
+        .init(operation: .objectAction(kind: kind, sources: sources, target: target))
+    }
 
     var summary: String {
         switch operation {
@@ -64,6 +71,8 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
         case .openTerminal(let path): return "Open Terminal at \(path)"
         case .runShortcut(let name): return "Run Shortcut “\(name)”"
         case .delay(let seconds): return "Wait \(seconds.formatted()) seconds"
+        case .objectAction(let kind, let sources, let target):
+            return "\(kind.rawValue.capitalized) \(sources.count) item\(sources.count == 1 ? "" : "s")\(target.map { " → \($0)" } ?? "")"
         }
     }
 
@@ -74,6 +83,7 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
         case .openTerminal(let directory): return .openTerminal(directory: directory)
         case .runShortcut(let name): return .runShortcut(name: name)
         case .delay(let seconds): return .wait(seconds: seconds)
+        case .objectAction(let kind, let sources, let target): return .objectAction(kind: kind, sources: sources, target: target)
         }
     }
 }
@@ -129,6 +139,9 @@ nonisolated enum RecipeValidation {
             case .openProject(let path), .openTerminal(let path), .runShortcut(let path):
                 return RecipeVariableResolver.placeholders(in: path)
             case .delay: return []
+            case .objectAction(_, let sources, let target):
+                return sources.flatMap(RecipeVariableResolver.placeholders)
+                    + (target.map(RecipeVariableResolver.placeholders) ?? [])
             }
         })
         let undeclared = placeholders.subtracting(Set(names + outputNames)).sorted()

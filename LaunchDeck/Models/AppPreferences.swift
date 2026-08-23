@@ -107,6 +107,7 @@ final class AppPreferences: ObservableObject {
     @Published var clipboardRetentionHours: Int
     @Published var clipboardDisclosureAcknowledged: Bool
     @Published var clipboardExcludedBundleIdentifiers: Set<String>
+    @Published var hasCompletedOnboarding: Bool
 
     private let defaults: UserDefaults
     fileprivate var cancellables = Set<AnyCancellable>()
@@ -127,6 +128,7 @@ final class AppPreferences: ObservableObject {
         static let clipboardRetentionHours = "preferences.clipboardRetentionHours"
         static let clipboardDisclosureAcknowledged = "preferences.clipboardDisclosureAcknowledged"
         static let clipboardExcludedBundleIdentifiers = "preferences.clipboardExcludedBundleIdentifiers"
+        static let hasCompletedOnboarding = "preferences.hasCompletedOnboarding.v1"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -175,6 +177,7 @@ final class AppPreferences: ObservableObject {
             ? 168 : max(24, defaults.integer(forKey: Keys.clipboardRetentionHours))
         clipboardDisclosureAcknowledged = defaults.bool(forKey: Keys.clipboardDisclosureAcknowledged)
         clipboardExcludedBundleIdentifiers = Set(defaults.stringArray(forKey: Keys.clipboardExcludedBundleIdentifiers) ?? [])
+        hasCompletedOnboarding = defaults.bool(forKey: Keys.hasCompletedOnboarding)
 
         if let shortcutData = defaults.data(forKey: Keys.globalShortcut),
            let decoded = try? JSONDecoder().decode(KeyboardShortcutPreference.self, from: shortcutData) {
@@ -204,6 +207,10 @@ final class AppPreferences: ObservableObject {
                 self?.defaults.set(value, forKey: Keys.showSystemApps)
             }
             .store(in: &cancellables)
+
+        $hasCompletedOnboarding.dropFirst().sink { [weak self] in
+            self?.defaults.set($0, forKey: Keys.hasCompletedOnboarding)
+        }.store(in: &cancellables)
 
         $gridScale
             .dropFirst()

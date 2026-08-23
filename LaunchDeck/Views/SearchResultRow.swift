@@ -4,12 +4,22 @@ import SwiftUI
 struct SearchResultRow: View {
     let item: SearchItem
     let isSelected: Bool
+    let isIncluded: Bool
     let detail: String
+    let onToggleIncluded: () -> Void
     let onRun: () -> Void
 
     var body: some View {
-        Button(action: onRun) {
-            HStack(spacing: 12) {
+        HStack(spacing: 4) {
+            Button(action: onToggleIncluded) {
+                Image(systemName: isIncluded ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isIncluded ? Color.accentColor : .secondary)
+                    .padding(10)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isIncluded ? "Remove from action selection" : "Add to action selection")
+            Button(action: onRun) {
+                HStack(spacing: 12) {
                 Image(systemName: iconName).frame(width: 24).foregroundStyle(.tint)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
@@ -18,11 +28,12 @@ struct SearchResultRow: View {
                 }
                 Spacer()
                 Text(item.kind.rawValue.capitalized).font(.caption2).foregroundStyle(.tertiary)
+                }
+                .padding(10)
+                .contentShape(Rectangle())
             }
-            .padding(10)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         .background(isSelected ? AnyShapeStyle(Color.accentColor.opacity(0.16)) : AnyShapeStyle(.regularMaterial),
                     in: RoundedRectangle(cornerRadius: 10))
         .overlay {

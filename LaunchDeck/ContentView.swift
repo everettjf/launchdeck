@@ -18,6 +18,8 @@ struct ContentView: View {
     @State private var editingRecipe: Recipe?
     @State private var actionPanelItem: SearchItem?
     @State private var selectedKinds = Set(SearchItemKind.allCases)
+    @State private var selectedObjectIDs = Set<String>()
+    @State private var objectActionRequest: ObjectActionRequest?
 
     private var unifiedResults: [SearchItem] {
         let query = searchText.hasPrefix("/") ? String(searchText.dropFirst()) : searchText
@@ -62,6 +64,7 @@ struct ContentView: View {
         }
         .onChange(of: unifiedResults.map(\.id), initial: true) {
             searchSelection.reconcile(items: unifiedResults)
+            selectedObjectIDs.formIntersection(Set(unifiedResults.map(\.id)))
         }
         .animation(.spring(response: 0.65, dampingFraction: 0.82), value: didAppear)
         .sheet(item: pendingPreviewBinding) { preview in
@@ -90,6 +93,15 @@ struct ContentView: View {
                 }
             )
         }
+        .sheet(item: $objectActionRequest) { request in
+            ObjectActionNavigatorView(initialSources: request.sources,
+                                      availableTargets: appState.objectTargets,
+                                      onExecute: appState.perform,
+                                      onSaveRecipe: appState.saveObjectChainAsRecipe)
+        }
+        .sheet(isPresented: Binding(get: { !preferences.hasCompletedOnboarding }, set: { _ in })) {
+            OnboardingView().environmentObject(appState).environmentObject(preferences)
+        }
         .alert("Action Failed", isPresented: actionErrorBinding) {
             Button("OK") { appState.dismissActionError() }
         } message: {
@@ -103,6 +115,11 @@ struct ContentView: View {
             }
             if recipe.variables.isEmpty { run(recipe, values: [:]) }
             else { pendingRecipe = recipe }
+        }
+        .onChange(of: appState.instantSendObjects) { _, objects in
+            guard !objects.isEmpty else { return }
+            objectActionRequest = ObjectActionRequest(sources: objects)
+            appState.clearInstantSend()
         }
     }
 
@@ -147,7 +164,9 @@ struct ContentView: View {
                             SearchKindFilterBar(selectedKinds: $selectedKinds)
                             UnifiedSearchResultsView(items: unifiedResults,
                                                      selectedIdentifier: searchSelection.selectedIdentifier,
+                                                     includedIdentifiers: selectedObjectIDs,
                                                      reason: appState.intentDetail,
+                                                     onToggleIncluded: toggleObjectSelection,
                                                      onRun: runSearchItem) {
                                 HStack(spacing: 8) {
                                     if appState.isSemanticSearching {
@@ -255,6 +274,20 @@ struct ContentView: View {
                 .buttonStyle(.bordered)
             }
 
+            Button {
+                InstantSendService.capture { objects in
+                    if !objects.isEmpty { objectActionRequest = ObjectActionRequest(sources: objects) }
+                }
+            } label: { Label("Instant Send", systemImage: "paperplane") }
+            .help("Capture the Finder selection, current URL, selected text, or clipboard")
+
+            if appState.canUndoObjectAction {
+                Button {
+                    appState.undoLastObjectAction()
+                } label: { Label("Undo \(appState.objectUndoActionName)", systemImage: "arrow.uturn.backward") }
+                .keyboardShortcut("z", modifiers: .command)
+            }
+
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
@@ -317,7 +350,13 @@ struct ContentView: View {
                 .onKeyPress("k", phases: .down) { press in
                     guard press.modifiers.contains(.command),
                           let item = searchSelection.selectedItem(in: unifiedResults) else { return .ignored }
-                    actionPanelItem = item
+                    let selected = unifiedResults.filter { selectedObjectIDs.contains($0.id) }.compactMap(LaunchObject.init(searchItem:))
+                    let fallback = LaunchObject(searchItem: item).map { [$0] } ?? []
+                    if !(selected.isEmpty ? fallback : selected).isEmpty {
+                        objectActionRequest = ObjectActionRequest(sources: selected.isEmpty ? fallback : selected)
+                    } else {
+                        actionPanelItem = item
+                    }
                     return .handled
                 }
             if !searchText.isEmpty {
@@ -399,6 +438,12 @@ struct ContentView: View {
         appState.perform(item)
     }
 
+    private func toggleObjectSelection(_ item: SearchItem) {
+        guard LaunchObject(searchItem: item) != nil else { return }
+        if selectedObjectIDs.contains(item.id) { selectedObjectIDs.remove(item.id) }
+        else { selectedObjectIDs.insert(item.id) }
+    }
+
     private func run(_ recipe: Recipe, values: [String: String]) {
         guard case .resolved(let steps) = RecipeVariableResolver.resolve(
             steps: recipe.steps, variables: recipe.variables, values: values
@@ -439,7 +484,9 @@ struct ContentView: View {
 private struct UnifiedSearchResultsView<Trailing: View>: View {
     let items: [SearchItem]
     let selectedIdentifier: String?
+    let includedIdentifiers: Set<String>
     let reason: (SearchItem) -> String?
+    let onToggleIncluded: (SearchItem) -> Void
     let onRun: (SearchItem) -> Void
     @ViewBuilder let trailing: () -> Trailing
 
@@ -450,7 +497,10 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
                 ForEach(items) { item in
                     SearchResultRow(item: item,
                                     isSelected: item.id == selectedIdentifier,
+                                    isIncluded: includedIdentifiers.contains(item.id),
                                     detail: reason(item) ?? item.subtitle ?? item.kind.rawValue.capitalized) {
+                        onToggleIncluded(item)
+                    } onRun: {
                         onRun(item)
                     }
                 }

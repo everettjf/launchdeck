@@ -11,6 +11,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
     case openTerminal(directory: String)
     case runRecipe(identifier: UUID, name: String, steps: [RecipeStep])
     case wait(seconds: Double)
+    case objectAction(kind: RecipeStep.ObjectActionKind, sources: [String], target: String?)
 
     var id: String {
         switch self {
@@ -24,6 +25,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openTerminal(let directory): return "terminal:\(directory)"
         case .runRecipe(let identifier, _, _): return "recipe:\(identifier.uuidString)"
         case .wait(let seconds): return "wait:\(seconds)"
+        case .objectAction(let kind, let sources, let target): return "object:\(kind.rawValue):\(sources.joined(separator: "|")):\(target ?? "")"
         }
     }
 
@@ -39,6 +41,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openTerminal: return "Open Terminal Here"
         case .runRecipe(_, let name, _): return "Run “\(name)”"
         case .wait(let seconds): return "Wait \(seconds.formatted()) seconds"
+        case .objectAction(let kind, let sources, _): return "\(kind.rawValue.capitalized) \(sources.count) item\(sources.count == 1 ? "" : "s")"
         }
     }
 
@@ -54,6 +57,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openTerminal(let directory): return directory
         case .runRecipe(_, _, let steps): return "Runs \(steps.count) deterministic local step\(steps.count == 1 ? "" : "s")."
         case .wait: return "Pauses before continuing the recipe."
+        case .objectAction(_, let sources, let target): return "Sources: \(sources.joined(separator: ", "))\(target.map { " · Target: \($0)" } ?? "")"
         }
     }
 
@@ -63,6 +67,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openURL(let url): return "Open web link on \(url.host ?? "unknown host")"
         case .runRecipe: return "Run approved recipe"
         case .wait: return "Wait"
+        case .objectAction: return title
         default: return title
         }
     }
@@ -73,6 +78,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openURL(let url): return "open-url:\(url.host ?? "unknown")"
         case .runRecipe: return "recipe"
         case .wait: return "clock"
+        case .objectAction(let kind, _, _): return "object-action:\(kind.rawValue)"
         default: return id
         }
     }
@@ -82,6 +88,7 @@ enum LaunchDeckAction: Identifiable, Hashable, Sendable {
         case .openApplication, .revealApplication, .openSystemSettings, .openFile, .openProject: return false
         case .openURL, .runShortcut, .openTerminal, .runRecipe: return true
         case .wait: return false
+        case .objectAction(let kind, _, _): return [.move, .trash, .paste].contains(kind)
         }
     }
 }
@@ -120,15 +127,17 @@ struct ActionPreview: Identifiable, Hashable, Sendable {
         case .openFile(let path, _, _), .openProject(let path), .openTerminal(let path): target = path
         case .runRecipe(_, let name, _): target = name
         case .wait(let seconds): target = seconds.formatted()
+        case .objectAction(_, let sources, let destination): target = destination ?? sources.joined(separator: ", ")
         }
         switch action {
         case .runRecipe(_, _, let recipeSteps): steps = recipeSteps.map { ActionPreviewStep(id: $0.id, title: $0.summary) }
-        case .wait: steps = [ActionPreviewStep(title: action.title)]
+        case .wait, .objectAction: steps = [ActionPreviewStep(title: action.title)]
         default: steps = [ActionPreviewStep(title: action.title)]
         }
         switch action {
         case .runShortcut: permissions = ["Shortcuts may access data granted to that shortcut"]
         case .openTerminal: permissions = ["Opens Terminal at the selected directory"]
+        case .objectAction(let kind, _, _): permissions = ["Performs local \(kind.rawValue) on the listed objects"]
         case .runRecipe(_, _, let recipeSteps):
             var values = ["Runs every listed step in order"]
             if recipeSteps.contains(where: { if case .runShortcut = $0.operation { return true }; return false }) {
@@ -198,6 +207,23 @@ enum ActionPolicy {
             return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
                 ? nil : "The Terminal target must be an existing directory."
         case .openApplication, .revealApplication, .openSystemSettings, .wait:
+            return nil
+        case .objectAction(let kind, let sources, let target):
+            guard !sources.isEmpty else { return "The object action requires at least one source." }
+            if [.move, .openWith].contains(kind), target == nil { return "The object action requires a target." }
+            if [.reveal, .move, .duplicate, .compress, .trash, .openWith].contains(kind),
+               sources.contains(where: { !FileManager.default.fileExists(atPath: $0) }) {
+                return "Every file source must exist before the action runs."
+            }
+            if kind == .move, let target {
+                var directory: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: target, isDirectory: &directory), directory.boolValue else {
+                    return "The move target must be an existing folder."
+                }
+            }
+            if kind == .openWith, let target, !FileManager.default.fileExists(atPath: target) {
+                return "The target application no longer exists."
+            }
             return nil
         }
     }

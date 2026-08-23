@@ -1,0 +1,17 @@
+{
+  "apps": 100000,
+  "cold_index_ms": 34368.78575,
+  "continuous_10_queries_ms": 6497.343667,
+  "incremental_refresh_ms": 97.713208,
+  "index_memory_delta_mb": 638.078125,
+  "intent_candidate_retrieval_ms": 446.132125,
+  "iterations": 100,
+  "qualified_search_p95_ms": 580.954417,
+  "resident_memory_mb": 644.578125,
+  "search_index_build_ms": 1165.827792,
+  "search_p50_ms": 555.578417,
+  "search_p95_ms": 709.38025,
+  "unified_index_build_ms": 1642.577125,
+  "unified_items": 200000,
+  "unified_search_p95_ms": 3.973209
+}

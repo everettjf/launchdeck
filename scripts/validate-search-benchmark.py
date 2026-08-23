@@ -28,9 +28,9 @@ for metric, maximum in thresholds["maximums"].items():
     if not isinstance(value, (int, float)):
         failures.append(f"{metric} is missing or not numeric")
     elif value > maximum:
-        failures.append(f"{metric}={value:.3f}ms exceeds {maximum:.3f}ms")
+        failures.append(f"{metric}={value:.3f} exceeds {maximum:.3f}")
     else:
-        print(f"PASS {metric}: {value:.3f}ms <= {maximum:.3f}ms")
+        print(f"PASS {metric}: {value:.3f} <= {maximum:.3f}")
 
 if failures:
     fail("; ".join(failures))

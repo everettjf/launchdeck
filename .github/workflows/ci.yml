@@ -55,24 +55,24 @@ jobs:
           "$RUNNER_TEMP/LaunchDeckRelease/Build/Products/Release/LaunchDeck.app"
 
   benchmark:
-    name: Search performance gate
+    name: 100k search and memory gate
     runs-on: macos-26
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Run 10k search benchmark
+      - name: Run 100k search and memory benchmark
         run: |
           mkdir -p .benchmark-results
-          swift run -c release application-index-benchmark --apps 10000 \
-            > .benchmark-results/search-10000.json
+          swift run -c release application-index-benchmark --apps 100000 \
+            > .benchmark-results/search-100000.json
           python3 ../scripts/validate-search-benchmark.py \
-            .benchmark-results/search-10000.json ../Benchmarks/search-thresholds.json
+            .benchmark-results/search-100000.json ../Benchmarks/search-thresholds-100k.json
         working-directory: Core
 
       - name: Upload benchmark evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: search-benchmark-10000
-          path: Core/.benchmark-results/search-10000.json
+          name: search-benchmark-100000
+          path: Core/.benchmark-results/search-100000.json

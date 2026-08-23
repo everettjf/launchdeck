@@ -13,6 +13,7 @@ enum SearchContextAction: String, Identifiable, CaseIterable, Sendable {
     case compress
     case tag
     case trash
+    case paste
 
     var id: String { rawValue }
 
@@ -29,6 +30,7 @@ enum SearchContextAction: String, Identifiable, CaseIterable, Sendable {
         case .compress: "Compress to ZIP"
         case .tag: "Set Finder Tags…"
         case .trash: "Move to Trash…"
+        case .paste: "Paste into Frontmost App"
         }
     }
 
@@ -45,6 +47,7 @@ enum SearchContextAction: String, Identifiable, CaseIterable, Sendable {
         case .compress: "archivebox"
         case .tag: "tag"
         case .trash: "trash"
+        case .paste: "text.insert"
         }
     }
 
@@ -55,6 +58,7 @@ enum SearchContextAction: String, Identifiable, CaseIterable, Sendable {
         case .quickLook: "Space"
         case .copyPath: "⇧⌘C"
         case .openTerminal, .rename, .move, .duplicate, .compress, .tag, .trash: nil
+        case .paste: "⇧↩"
         }
     }
 }
@@ -76,7 +80,9 @@ enum SearchContextActionCatalog {
             [.open]
         case .quicklink:
             [.open]
-        case .clipboard, .snippet, .windowAction:
+        case .clipboard:
+            [.open, .paste]
+        case .snippet, .windowAction:
             [.open]
         case .extensionCommand:
             [.open]

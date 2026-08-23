@@ -10,6 +10,7 @@ final class ActionController: ObservableObject {
 
     private let historyStore: ActionHistoryStore
     private let recipeLogStore: RecipeExecutionLogStore
+    private let objectActionPerformer = ObjectActionPerformer()
     var appProvider: (String) -> URL?
     var applicationOpened: (String) -> Void = { _ in }
     var documentOpened: (String) -> Void = { _ in }
@@ -117,6 +118,13 @@ final class ActionController: ObservableObject {
                 try? await Task.sleep(for: .seconds(max(0, seconds)))
                 self?.complete(action, succeeded: true)
             }
+        case .objectAction(let kind, let sources, let target):
+            do {
+                _ = try objectActionPerformer.execute(kind: kind, sources: sources, target: target)
+                complete(action, succeeded: true)
+            } catch {
+                fail(action, message: error.localizedDescription)
+            }
         }
     }
 
@@ -164,6 +172,11 @@ final class ActionController: ObservableObject {
         case .wait(let seconds):
             try? await Task.sleep(for: .seconds(max(0, seconds)))
             return true
+        case .objectAction(let kind, let sources, let target):
+            do {
+                _ = try objectActionPerformer.execute(kind: kind, sources: sources, target: target)
+                return true
+            } catch { return false }
         default: return false
         }
     }

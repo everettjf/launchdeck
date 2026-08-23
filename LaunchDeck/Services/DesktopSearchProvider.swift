@@ -11,12 +11,12 @@ enum DesktopSearchProvider {
 
         if clipboardEnabled {
             items += clipboardEntries
-                .filter { $0.text.lowercased().contains(query) }
+                .filter { $0.text.lowercased().contains(query) || $0.typeName.lowercased().contains(query) }
                 .prefix(20)
                 .map {
                     SearchItem(id: "clipboard:\($0.id)", kind: .clipboard,
-                               title: String($0.text.prefix(80)), subtitle: $0.copiedAt.formatted(),
-                               keywords: ["clipboard", "copy", "paste"], target: .copyText($0.text))
+                               title: String($0.text.prefix(80)), subtitle: "\($0.typeName) · \($0.copiedAt.formatted())",
+                               keywords: ["clipboard", "copy", "paste", $0.typeName], target: .clipboardEntry(identifier: $0.id))
                 }
         }
 

@@ -29,10 +29,12 @@ final class ShortcutCoordinator: ObservableObject {
                 guard let self else { return }
                 let appState = self.appState
 
-                // Show window first, then focus search after window is visible
-                WindowManager.shared.showMainWindow {
-                    Task { @MainActor in
-                        appState.postSearchFocusRequest()
+                Task { @MainActor in
+                    InstantSendService.capture { objects in
+                        appState.receiveInstantSend(objects)
+                        WindowManager.shared.showMainWindow {
+                            Task { @MainActor in appState.postSearchFocusRequest() }
+                        }
                     }
                 }
             }

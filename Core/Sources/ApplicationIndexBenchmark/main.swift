@@ -1,5 +1,6 @@
 import Foundation
 import LaunchDeckCore
+import Darwin
 
 let arguments = CommandLine.arguments
 let appCount = arguments.firstIndex(of: "--apps").flatMap { index in
@@ -7,6 +8,17 @@ let appCount = arguments.firstIndex(of: "--apps").flatMap { index in
 } ?? 1_000
 
 let root = FileManager.default.temporaryDirectory.appendingPathComponent("LaunchDeckBenchmark-\(UUID().uuidString)")
+func residentMemoryMB() -> Double {
+    var info = mach_task_basic_info()
+    var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+    let status = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+            task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+        }
+    }
+    return status == KERN_SUCCESS ? Double(info.resident_size) / 1_048_576 : -1
+}
+let baselineMemoryMB = residentMemoryMB()
 defer { try? FileManager.default.removeItem(at: root) }
 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
@@ -80,11 +92,18 @@ let unifiedItems = apps.enumerated().flatMap { offset, app -> [SearchItem] in
 }
 let unifiedBuild = clock.measure { _ = UnifiedSearchIndex(items: unifiedItems) }
 let unifiedIndex = UnifiedSearchIndex(items: unifiedItems)
+let indexedMemoryMB = residentMemoryMB()
 var unifiedSamples: [Int64] = []
+var qualifiedSamples: [Int64] = []
 for iteration in 0..<100 {
     let duration = clock.measure { _ = unifiedIndex.search(iteration.isMultiple(of: 2) ? "benchmark app 50" : "brief 50", limit: 20) }
     unifiedSamples.append(duration.components.seconds * 1_000_000_000
                           + Int64(duration.components.attoseconds / 1_000_000_000))
+    let qualified = clock.measure {
+        _ = unifiedIndex.search(SearchQuery.parse(iteration.isMultiple(of: 2) ? "kind:file ext:pdf brief 50" : "app:benchmark app 50"), limit: 20)
+    }
+    qualifiedSamples.append(qualified.components.seconds * 1_000_000_000
+                            + Int64(qualified.components.attoseconds / 1_000_000_000))
 }
 
 let output: [String: Any] = [
@@ -100,6 +119,9 @@ let output: [String: Any] = [
     "unified_items": unifiedItems.count,
     "unified_index_build_ms": milliseconds(unifiedBuild),
     "unified_search_p95_ms": p95Milliseconds(unifiedSamples),
+    "qualified_search_p95_ms": p95Milliseconds(qualifiedSamples),
+    "resident_memory_mb": indexedMemoryMB,
+    "index_memory_delta_mb": max(0, indexedMemoryMB - baselineMemoryMB),
     "query_p95_ms": Dictionary(uniqueKeysWithValues: querySamples.map { ($0.key, p95Milliseconds($0.value)) }),
 ]
 let json = try JSONSerialization.data(withJSONObject: output, options: [.prettyPrinted, .sortedKeys])

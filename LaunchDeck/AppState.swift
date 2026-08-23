@@ -15,6 +15,7 @@ final class AppState: ObservableObject {
     @Published private(set) var recents: [RecentLaunch]
     @Published private(set) var indexedItems: [SearchItem] = []
     @Published private(set) var recentSearchQueries: [String] = []
+    @Published private(set) var instantSendObjects: [LaunchObject] = []
 
     let layoutController: LayoutController
     let searchController: SemanticSearchController
@@ -24,6 +25,8 @@ final class AppState: ObservableObject {
     let quicklinkStore: QuicklinkStore
     let clipboardStore: ClipboardStore
     private let fileOperationService = FileOperationService()
+    private let objectActionPerformer = ObjectActionPerformer()
+    private let objectUndoManager = UndoManager()
     let snippetStore: SnippetStore
     let extensionStore: ExtensionStore
 
@@ -46,6 +49,8 @@ final class AppState: ObservableObject {
     var pendingActionPreview: ActionPreview? { actionController.pendingPreview }
     var actionError: String? { actionController.lastError }
     var isSemanticSearchAvailable: Bool { searchController.isAvailable }
+    var canUndoObjectAction: Bool { objectUndoManager.canUndo }
+    var objectUndoActionName: String { objectUndoManager.undoActionName }
 
     private let favoritesStore: FavoritesStore
     private let recentsStore: RecentsStore
@@ -297,6 +302,98 @@ final class AppState: ObservableObject {
         focusPublisher.send()
     }
 
+    func receiveInstantSend(_ objects: [LaunchObject]) {
+        instantSendObjects = objects
+    }
+
+    func clearInstantSend() { instantSendObjects = [] }
+
+    func objectTargets(for action: ObjectAction) -> [LaunchObject] {
+        switch action {
+        case .move:
+            let recent = fileOperationService.recentDestinationPaths.map {
+                LaunchObject(kind: .folder, title: URL(fileURLWithPath: $0).lastPathComponent, value: $0)
+            }
+            let indexed = indexedItems.compactMap(LaunchObject.init(searchItem:)).filter { $0.kind == .folder }
+            var seen = Set<String>()
+            return (recent + indexed).filter { seen.insert($0.value).inserted }
+        case .openWith:
+            return allApps().map {
+                LaunchObject(kind: .application, title: $0.name, value: $0.path, applicationIdentifier: $0.identifier)
+            }
+        default: return []
+        }
+    }
+
+    func perform(_ action: ObjectAction, sources: [LaunchObject], target: LaunchObject?) {
+        guard !sources.isEmpty else { return }
+        if action == .saveAsRecipe {
+            saveObjectChainAsRecipe(sources: sources, target: target)
+            return
+        }
+        guard let kind = recipeKind(for: action) else { return }
+        let clipboardEntries = sources.compactMap { source -> ClipboardEntry? in
+            guard source.kind == .clipboard, let id = UUID(uuidString: source.value) else { return nil }
+            return clipboardStore.entries.first { $0.id == id }
+        }
+        if clipboardEntries.count == sources.count, let first = clipboardEntries.first, [.copy, .paste].contains(action) {
+            if action == .paste { clipboardStore.paste(first) } else { clipboardStore.writeToPasteboard(first) }
+            return
+        }
+        let targetValue: String?
+        if action == .paste { targetValue = sources.first?.applicationIdentifier }
+        else { targetValue = target?.value }
+        do {
+            if let undo = try objectActionPerformer.execute(kind: kind, sources: sources.map(\.value), target: targetValue) {
+                objectUndoManager.registerUndo(withTarget: self) { state in state.undoObjectAction(undo) }
+                objectUndoManager.setActionName(undo.title)
+            }
+            refreshLocalContent()
+        } catch { actionController.presentError(error.localizedDescription) }
+    }
+
+    func undoLastObjectAction() {
+        guard objectUndoManager.canUndo else { return }
+        objectUndoManager.undo()
+    }
+
+    private func undoObjectAction(_ record: FileUndoRecord) {
+        do { try fileOperationService.undo(record); refreshLocalContent() }
+        catch { actionController.presentError("Undo failed: \(error.localizedDescription)") }
+    }
+
+    private func saveObjectChainAsRecipe(sources: [LaunchObject], target: LaunchObject?) {
+        guard let name = prompt(title: "Save Action Chain", message: "Recipe name:", value: "Object Workflow") else { return }
+        // The saved default is an open chain; the navigator replaces this with its selected action when supplied.
+        let recipe = Recipe(name: name, steps: [.objectAction(.open, sources: sources.map(\.value), target: target?.value)])
+        do { try recipeStore.save(recipe) }
+        catch { actionController.presentError(error.localizedDescription) }
+    }
+
+    func saveObjectChainAsRecipe(action: ObjectAction, sources: [LaunchObject], target: LaunchObject?) {
+        guard let kind = recipeKind(for: action),
+              let name = prompt(title: "Save Action Chain", message: "Recipe name:", value: "\(action.title) Workflow") else { return }
+        let savedTarget = action == .paste ? (target?.value ?? sources.first?.applicationIdentifier) : target?.value
+        let recipe = Recipe(name: name, steps: [.objectAction(kind, sources: sources.map(\.value), target: savedTarget)])
+        do { try recipeStore.save(recipe) }
+        catch { actionController.presentError(error.localizedDescription) }
+    }
+
+    private func recipeKind(for action: ObjectAction) -> RecipeStep.ObjectActionKind? {
+        switch action {
+        case .open: .open
+        case .reveal: .reveal
+        case .copy: .copy
+        case .paste: .paste
+        case .openWith: .openWith
+        case .move: .move
+        case .duplicate: .duplicate
+        case .compress: .compress
+        case .trash: .trash
+        case .saveAsRecipe: nil
+        }
+    }
+
     // Called when search query changes - handles semantic search state
     func handleSearchQueryChange(_ query: String) {
         searchController.handleQueryChange(query)
@@ -321,15 +418,18 @@ final class AppState: ObservableObject {
     }
 
     func searchItems(matching query: String, limit: Int = 80) -> [SearchItem] {
-        let utilities = UtilitySearchProvider.results(for: query, quicklinks: quicklinkStore.quicklinks)
-            + DesktopSearchProvider.items(matching: query,
+        let parsed = SearchQuery.parse(query)
+        let searchableText = parsed.text
+        let utilityCandidates = searchableText.isEmpty ? [] : (UtilitySearchProvider.results(for: searchableText, quicklinks: quicklinkStore.quicklinks)
+            + DesktopSearchProvider.items(matching: searchableText,
                                           clipboardEnabled: preferences.clipboardEnabled,
                                           clipboardEntries: clipboardStore.entries,
                                           snippets: snippetStore.snippets)
-            + extensionStore.searchItems(matching: query)
-        let ranked = unifiedSearchIndex.search(query,
+            + extensionStore.searchItems(matching: searchableText))
+        let utilities = utilityCandidates.filter(parsed.matches)
+        let ranked = unifiedSearchIndex.search(parsed,
                                                kindBoosts: [.application: 0.04, .project: 0.03],
-                                               itemBoosts: searchLearningStore.boosts(for: query),
+                                               itemBoosts: searchLearningStore.boosts(for: parsed.text),
                                                limit: limit).map(\.item)
         return Array((utilities + ranked).prefix(limit))
     }
@@ -396,6 +496,10 @@ final class AppState: ObservableObject {
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             runFileOperation { try fileOperationService.moveToTrash([url]) }
+        case .paste:
+            guard case .clipboardEntry(let identifier) = item.target,
+                  let entry = clipboardStore.entries.first(where: { $0.id == identifier }) else { return }
+            clipboardStore.paste(entry)
         }
     }
 
@@ -481,6 +585,9 @@ final class AppState: ObservableObject {
         case .systemCommand(let identifier):
             if let command = DesktopWindowCommand(rawValue: identifier),
                let error = DesktopWindowController.perform(command) { actionController.presentError(error) }
+            action = nil
+        case .clipboardEntry(let identifier):
+            if let entry = clipboardStore.entries.first(where: { $0.id == identifier }) { clipboardStore.writeToPasteboard(entry) }
             action = nil
         }
         if let action { requestAction(action) }
@@ -709,11 +816,4 @@ final class AppState: ObservableObject {
 
 private extension SearchItem {
     var fileSystemURL: URL? { fileSystemPath.map { URL(fileURLWithPath: $0) } }
-
-    var fileSystemPath: String? {
-        switch target {
-        case .application(_, let path), .file(let path), .folder(let path), .project(let path): path
-        case .registeredAction, .systemSetting, .shortcut, .recipe, .copyText, .url, .systemCommand: nil
-        }
-    }
 }

@@ -1,0 +1,14 @@
+{
+  "apps": 100000,
+  "maximums": {
+    "cold_index_ms": 45000.0,
+    "incremental_refresh_ms": 100.0,
+    "search_p95_ms": 750.0,
+    "continuous_10_queries_ms": 7500.0,
+    "intent_candidate_retrieval_ms": 750.0,
+    "unified_search_p95_ms": 25.0,
+    "qualified_search_p95_ms": 750.0,
+    "resident_memory_mb": 1024.0,
+    "index_memory_delta_mb": 800.0
+  }
+}

@@ -104,6 +104,7 @@ enum RecipeRunner {
         case .openApplication(let identifier, _): identifier
         case .openProject(let path), .openTerminal(let path), .runShortcut(let path): path
         case .delay(let seconds): seconds.formatted()
+        case .objectAction(_, let sources, let target): target ?? sources.first ?? ""
         }
     }
 }

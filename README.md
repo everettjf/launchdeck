@@ -19,6 +19,10 @@ LaunchDeck is configured for direct Developer ID distribution rather than the Ma
 - Auto-discover system and user apps and keep layout in sync
 - Custom grid layout: drag to reorder, drag to create folders, favorite apps
 - Unified local search across apps, files, folders, projects, settings, actions, approved Shortcuts, and recipes
+- Instant Send captures Finder selections, browser URLs, selected text, and rich clipboard objects before LaunchDeck opens
+- One keyboard-first Object → Action → Target navigator for single or multi-item operations, with one-step Undo
+- Save a validated object/action/target chain as a reusable Recipe
+- Search qualifiers such as `kind:file`, `path:Documents`, `ext:pdf`, and `app:Safari` filter before ranking
 - Optional structured intent search (type `/`) that selects only validated local targets and registered actions
 - Configurable local document/project roots with dependency, build, hidden, and sensitive-directory exclusions
 - Deterministic local recipes with conditions, retries, optional steps, delays, output variables, execution logs, and action previews
@@ -66,6 +70,9 @@ The script increments the latest semantic-version patch, updates the Xcode marke
 ## Usage
 
 - Type to search every indexed object without waiting for AI
+- Press the global hotkey from Finder or a browser to Instant Send the current selection, then use Tab/Shift-Tab through Object → Action → Target
+- Select multiple search results and press Command-K to run a compatible batch action; use the header Undo control to reverse file mutations
+- Paste or search clipboard text, PNG images, and file selections after explicitly enabling local clipboard history
 - Start with `/` to describe an intent (e.g. `/edit an image`); local results remain visible while AI ranks structured target/action candidates
 - Select an elevated action to review its exact target, ordered steps, permissions, and risk before confirming
 - Drag apps to reorder, drag onto apps to create folders
@@ -92,7 +99,7 @@ Application indexes, organization, recipes, launch history, recent documents, an
 
 | Local data | Default / retention | Reset |
 | --- | --- | --- |
-| Clipboard text | Disabled; when enabled, 200 entries, 20,000 characters each, user-selected 1/7/30-day retention | Clipboard clear or unified behavioral-data reset |
+| Clipboard text, images, and file references | Disabled; when enabled, 200 entries; 20,000 characters, 5 MB image data, or 100 file paths per entry; user-selected 1/7/30-day retention | Clipboard clear or unified behavioral-data reset |
 | Recent documents | Up to 30 entries | Unified behavioral-data reset |
 | Action history | Latest 50 actions | Unified behavioral-data reset |
 | Recipe execution logs | Latest 50 executions | Recipe log clear or unified behavioral-data reset |
@@ -102,7 +109,7 @@ Clipboard monitoring excludes supported password managers and user-configured bu
 
 ## Performance benchmark
 
-Run `cd Core && swift run -c release application-index-benchmark --apps 5000`. The command emits JSON covering cold discovery, incremental refresh, app and unified-index construction, intent-candidate retrieval, and fuzzy-search p50/p95 latency.
+Run `cd Core && swift run -c release application-index-benchmark --apps 100000`. The command emits JSON covering cold discovery, incremental refresh, app and unified-index construction, qualified and fuzzy-search p50/p95 latency, intent-candidate retrieval, resident memory, and index memory delta. CI validates it against `Benchmarks/search-thresholds-100k.json`.
 
 ## Project Structure
 

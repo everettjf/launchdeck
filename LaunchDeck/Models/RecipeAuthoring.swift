@@ -77,6 +77,7 @@ nonisolated enum RecipeVariableResolver {
         case .openApplication(let identifier, let name): return [identifier, name]
         case .openProject(let path), .openTerminal(let path), .runShortcut(let path): return [path]
         case .delay: return []
+        case .objectAction(_, let sources, let target): return sources + [target].compactMap { $0 }
         }
     }
 
@@ -106,6 +107,8 @@ nonisolated enum RecipeVariableResolver {
         case .openTerminal(let directory): return .openTerminal(directory: value(directory))
         case .runShortcut(let name): return .runShortcut(name: value(name))
         case .delay(let seconds): return .delay(seconds: seconds)
+        case .objectAction(let kind, let sources, let target):
+            return .objectAction(kind: kind, sources: sources.map(value), target: target.map(value))
         }
     }
 
@@ -142,6 +145,7 @@ nonisolated struct RecipeDryRunReport: Equatable, Sendable {
                 case .runShortcut: "Runs an approved Apple Shortcut"
                 case .openTerminal: "Opens Terminal"
                 case .delay: nil
+                case .objectAction(let kind, _, _): "Runs local \(kind.rawValue) action"
                 default: nil
                 }
             }

@@ -32,6 +32,26 @@ public struct UnifiedSearchIndex: Sendable {
         return limit.map { Array(ranked.prefix($0)) } ?? ranked
     }
 
+    public func search(_ query: SearchQuery, kindBoosts: [SearchItemKind: Double] = [:],
+                       itemBoosts: [String: Double] = [:], limit: Int? = nil) -> [(item: SearchItem, score: Double)] {
+        let matching = entries.lazy.filter { query.matches($0.item) }
+        let normalized = Self.normalize(query.text)
+        let ranked: [(SearchItem, Double)]
+        if normalized.isEmpty {
+            ranked = matching.map { ($0.item, kindBoosts[$0.item.kind] ?? 0) }
+                .sorted { $0.0.title.localizedCaseInsensitiveCompare($1.0.title) == .orderedAscending }
+        } else {
+            ranked = matching.compactMap { entry in
+                guard let score = entry.score(normalized) else { return nil }
+                return (entry.item, score + (kindBoosts[entry.item.kind] ?? 0) + (itemBoosts[entry.item.id] ?? 0))
+            }.sorted {
+                if $0.1 != $1.1 { return $0.1 > $1.1 }
+                return $0.0.title.localizedCaseInsensitiveCompare($1.0.title) == .orderedAscending
+            }
+        }
+        return limit.map { Array(ranked.prefix($0)) } ?? ranked
+    }
+
     /// Multi-token queries first use their complete words to avoid rescoring
     /// unrelated kinds. If any token is unknown we fall back to the complete
     /// index so typo-heavy queries retain the fuzzy matcher.
