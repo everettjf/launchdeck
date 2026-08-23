@@ -7,7 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject private var preferences: AppPreferences
     @EnvironmentObject private var appState: AppState
     @State private var shortcutName = ""
-    @State private var editingRecipe: Recipe?
+    @State private var presentedRecipeSheet: RecipeSheet?
     @State private var operationError: String?
 
     var body: some View {
@@ -97,13 +97,16 @@ struct SettingsView: View {
                     HStack {
                         VStack(alignment: .leading) { Text(recipe.name); Text("\(recipe.steps.count) steps").font(.caption).foregroundStyle(.secondary) }
                         Spacer()
-                        Button("Run") { appState.requestAction(.runRecipe(identifier: recipe.id, name: recipe.name, steps: recipe.steps)) }
-                        Button("Edit") { editingRecipe = recipe }
+                        Button("Run") {
+                            if recipe.variables.isEmpty { run(recipe, values: [:]) }
+                            else { presentedRecipeSheet = .run(recipe) }
+                        }
+                        Button("Edit") { presentedRecipeSheet = .edit(recipe) }
                         Button("Remove", role: .destructive) { appState.recipeStore.remove(id: recipe.id) }
                     }
                 }
                 HStack {
-                    Button("New Recipe") { editingRecipe = Recipe(name: "New Recipe", steps: []) }
+                    Button("New Recipe") { presentedRecipeSheet = .edit(Recipe(name: "New Recipe", steps: [])) }
                     Button("Import…", action: importRecipes)
                     Button("Export…", action: exportRecipes).disabled(appState.recipeStore.recipes.isEmpty)
                 }
@@ -122,12 +125,17 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 520, height: 640)
-        .sheet(item: $editingRecipe) { recipe in
-            RecipeEditorView(recipe: recipe,
-                             applications: appState.allApps(),
-                             approvedShortcuts: preferences.approvedShortcuts) { updated in
-                do { try appState.recipeStore.save(updated); return true }
-                catch { operationError = error.localizedDescription; return false }
+        .sheet(item: $presentedRecipeSheet) { sheet in
+            switch sheet {
+            case .edit(let recipe):
+                RecipeEditorView(recipe: recipe,
+                                 applications: appState.allApps(),
+                                 approvedShortcuts: preferences.approvedShortcuts) { updated in
+                    do { try appState.recipeStore.save(updated); return true }
+                    catch { operationError = error.localizedDescription; return false }
+                }
+            case .run(let recipe):
+                RecipeRunView(recipe: recipe) { values in run(recipe, values: values) }
             }
         }
         .alert("Settings Action Failed", isPresented: operationErrorBinding) {
@@ -193,6 +201,27 @@ struct SettingsView: View {
     private var operationErrorBinding: Binding<Bool> {
         Binding(get: { operationError != nil }, set: { if !$0 { operationError = nil } })
     }
+
+    private func run(_ recipe: Recipe, values: [String: String]) {
+        switch RecipeVariableResolver.resolve(steps: recipe.steps, variables: recipe.variables, values: values) {
+        case .resolved(let steps):
+            appState.requestAction(.runRecipe(identifier: recipe.id, name: recipe.name, steps: steps))
+        case .missing(let names):
+            operationError = "Enter values for: \(names.joined(separator: ", "))."
+        }
+    }
+}
+
+private enum RecipeSheet: Identifiable {
+    case edit(Recipe)
+    case run(Recipe)
+
+    var id: String {
+        switch self {
+        case .edit(let recipe): "edit-\(recipe.id)"
+        case .run(let recipe): "run-\(recipe.id)"
+        }
+    }
 }
 
 private struct RecipeEditorView: View {
@@ -205,6 +234,7 @@ private struct RecipeEditorView: View {
     @State private var stepValue = ""
     @State private var selectedApplicationIdentifier = ""
     @State private var selectedShortcut = ""
+    @State private var variableName = ""
 
     enum StepKind: String, CaseIterable, Identifiable { case application, project, terminal, shortcut; var id: String { rawValue } }
 
@@ -219,10 +249,29 @@ private struct RecipeEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Recipe").font(.title2.weight(.semibold))
+            HStack {
+                Text("Recipe").font(.title2.weight(.semibold))
+                Spacer()
+                Menu("Use Template") {
+                    ForEach(RecipeTemplateCatalog.templates) { template in
+                        Button(template.name) { apply(template) }
+                    }
+                }
+            }
             TextField("Name", text: $recipe.name)
             List {
-                ForEach(recipe.steps) { step in Text(step.summary) }
+                ForEach(Array(recipe.steps.enumerated()), id: \.element.id) { index, step in
+                    HStack {
+                        Text(step.summary)
+                        Spacer()
+                        Button { moveStep(from: index, by: -1) } label: { Image(systemName: "arrow.up") }
+                            .buttonStyle(.borderless).disabled(index == 0)
+                            .accessibilityLabel("Move step up")
+                        Button { moveStep(from: index, by: 1) } label: { Image(systemName: "arrow.down") }
+                            .buttonStyle(.borderless).disabled(index == recipe.steps.count - 1)
+                            .accessibilityLabel("Move step down")
+                    }
+                }
                     .onDelete { recipe.steps.remove(atOffsets: $0) }
             }.frame(height: 180)
             HStack {
@@ -230,13 +279,34 @@ private struct RecipeEditorView: View {
                 stepEditor
                 Button("Add", action: addStep).disabled(!canAddStep)
             }
+            GroupBox("Variables") {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach($recipe.variables) { $variable in
+                        HStack {
+                            TextField("Name", text: $variable.name)
+                            TextField("Default value (optional)", text: $variable.defaultValue)
+                            Button("Remove", role: .destructive) {
+                                recipe.variables.removeAll { $0.id == variable.id }
+                            }
+                        }
+                    }
+                    HStack {
+                        TextField("Variable name", text: $variableName)
+                        Button("Add Variable", action: addVariable)
+                            .disabled(!canAddVariable)
+                    }
+                    Text("Use variables in step values as {{variableName}}.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.top, 4)
+            }
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Save") { if onSave(recipe) { dismiss() } }
                     .disabled(RecipeValidation.error(for: recipe) != nil)
             }
-        }.padding(24).frame(width: 620)
+        }.padding(24).frame(width: 700)
     }
 
     @ViewBuilder private var stepEditor: some View {
@@ -283,6 +353,84 @@ private struct RecipeEditorView: View {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         stepValue = url.path
+    }
+
+    private var canAddVariable: Bool {
+        let name = variableName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return RecipeVariableResolver.placeholders(in: "{{\(name)}}").first == name
+            && !recipe.variables.contains { $0.name == name }
+    }
+
+    private func addVariable() {
+        let name = variableName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canAddVariable else { return }
+        recipe.variables.append(RecipeVariable(name: name))
+        variableName = ""
+    }
+
+    private func moveStep(from source: Int, by offset: Int) {
+        let destination = offset > 0 ? source + offset + 1 : source + offset
+        recipe.steps = RecipeStepOrder.moving(recipe.steps, from: source, to: destination)
+    }
+
+    private func apply(_ template: RecipeTemplate) {
+        recipe.name = template.name
+        recipe.variables = template.variables
+        recipe.steps = template.steps
+    }
+}
+
+struct RecipeRunView: View {
+    @Environment(\.dismiss) private var dismiss
+    let recipe: Recipe
+    let onRun: ([String: String]) -> Void
+    @State private var values: [String: String]
+    @State private var missingNames: [String] = []
+
+    init(recipe: Recipe, onRun: @escaping ([String: String]) -> Void) {
+        self.recipe = recipe
+        self.onRun = onRun
+        _values = State(initialValue: Dictionary(uniqueKeysWithValues: recipe.variables.map { ($0.name, $0.defaultValue) }))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Run \(recipe.name)").font(.title2.weight(.semibold))
+            Text("Enter values before reviewing the complete action preview.")
+                .foregroundStyle(.secondary)
+            Form {
+                ForEach(recipe.variables) { variable in
+                    TextField(variable.name, text: valueBinding(for: variable.name))
+                }
+            }
+            if !missingNames.isEmpty {
+                Text("Required: \(missingNames.joined(separator: ", "))")
+                    .font(.caption).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                Button("Review and Run") { submit() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 500)
+    }
+
+    private func valueBinding(for name: String) -> Binding<String> {
+        Binding(get: { values[name, default: ""] }, set: { values[name] = $0 })
+    }
+
+    private func submit() {
+        if case .missing(let names) = RecipeVariableResolver.resolve(
+            steps: recipe.steps, variables: recipe.variables, values: values
+        ) {
+            missingNames = names
+            return
+        }
+        let submittedValues = values
+        dismiss()
+        DispatchQueue.main.async { onRun(submittedValues) }
     }
 }
 

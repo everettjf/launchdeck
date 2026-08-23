@@ -42,6 +42,8 @@ final class AppState: ObservableObject {
 
     private let favoritesStore: FavoritesStore
     private let recentsStore: RecentsStore
+    private let localIndexStore: LocalIndexStore
+    private let recentDocumentStore: RecentDocumentStore
     private nonisolated let discoveryService: ApplicationDiscoveryService
     private let preferences: AppPreferences
     private let focusPublisher = PassthroughSubject<Void, Never>()
@@ -62,7 +64,9 @@ final class AppState: ObservableObject {
          favoritesStore: FavoritesStore? = nil,
          recentsStore: RecentsStore? = nil,
          discoveryService: ApplicationDiscoveryService? = nil,
-         layoutStore: LayoutStore? = nil) {
+         layoutStore: LayoutStore? = nil,
+         localIndexStore: LocalIndexStore = LocalIndexStore(),
+         recentDocumentStore: RecentDocumentStore = RecentDocumentStore()) {
         self.preferences = preferences
         let favoritesStore = favoritesStore ?? FavoritesStore()
         let recentsStore = recentsStore ?? RecentsStore(maxCount: 12)
@@ -71,6 +75,8 @@ final class AppState: ObservableObject {
         self.favoritesStore = favoritesStore
         self.recentsStore = recentsStore
         self.discoveryService = discoveryService
+        self.localIndexStore = localIndexStore
+        self.recentDocumentStore = recentDocumentStore
         self.favorites = favoritesStore.load()
         self.recents = recentsStore.load()
 
@@ -119,6 +125,9 @@ final class AppState: ObservableObject {
         actionController.applicationOpened = { [weak self] identifier in
             guard let self, let app = self.appsByIdentifier[identifier] else { return }
             self.updateRecents(with: app)
+        }
+        actionController.documentOpened = { [weak self] path in
+            self?.recordRecentDocument(path)
         }
         searchController.initialize()
         refreshLocalContent()
@@ -332,14 +341,20 @@ final class AppState: ObservableObject {
     func refreshLocalContent(rootPaths: [String]? = nil) {
         localIndexGeneration += 1
         let requestGeneration = localIndexGeneration
-        let roots = (rootPaths ?? preferences.indexedRootPaths).map(URL.init(fileURLWithPath:))
-        let recentURLs = NSDocumentController.shared.recentDocumentURLs
+        let rootPaths = rootPaths ?? preferences.indexedRootPaths
+        if let cached = localIndexStore.load(expectedRootPaths: rootPaths) {
+            indexedItems = cached.items
+            rebuildUnifiedIndex()
+        }
+        let roots = rootPaths.map(URL.init(fileURLWithPath:))
+        let storedRecentURLs = recentDocumentStore.load().map { URL(fileURLWithPath: $0.path) }
         Task.detached(priority: .utility) { [weak self] in
-            let items = LocalContentIndexer().index(configuration: .init(roots: roots), recentURLs: recentURLs)
+            let items = LocalContentIndexer().index(configuration: .init(roots: roots), recentURLs: storedRecentURLs)
             await MainActor.run {
                 guard let self, requestGeneration == self.localIndexGeneration else { return }
                 self.indexedItems = items
                 self.rebuildUnifiedIndex()
+                try? self.localIndexStore.save(LocalIndexSnapshot(rootPaths: rootPaths, items: items))
             }
         }
     }
@@ -383,6 +398,11 @@ final class AppState: ObservableObject {
     func clearPrivateHistory() {
         clearRecents()
         actionController.clearHistory()
+        try? recentDocumentStore.clear()
+        try? localIndexStore.clear()
+        indexedItems = []
+        rebuildUnifiedIndex()
+        refreshLocalContent()
     }
 
     // MARK: - App queries
@@ -514,6 +534,11 @@ final class AppState: ObservableObject {
                                                recipes: recipes ?? recipeStore.recipes)
         searchItemsByIdentifier = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         unifiedSearchIndex = UnifiedSearchIndex(items: items)
+    }
+
+    private func recordRecentDocument(_ path: String) {
+        _ = try? recentDocumentStore.record(path: path)
+        refreshLocalContent()
     }
 
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {

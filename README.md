@@ -6,7 +6,7 @@ Repository: <https://github.com/everettjf/launchdeck>
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eGzEaP6TzR)
 
-A modern macOS app launcher focused on fast discovery, organization, and launch.
+A private, local-first macOS launcher that combines Spotlight-style file discovery, Raycast-style actions, and LaunchBar-style workflows in one instant searchable index—with optional on-device intent search.
 
 LaunchDeck is configured for direct Developer ID distribution rather than the Mac App Store.
 
@@ -57,11 +57,12 @@ Run the core logic tests with `cd Core && swift test`.
 - Explicitly approved Shortcuts with confirmation before every run
 - Search roots for local files, folders, Git repositories, and Xcode projects
 - Local recipes assembled from apps, projects, Terminal locations, and approved Shortcuts
-- Local launch/action history reset
+- Recipe templates, reusable variables, and ordered step editing
+- Local launch, action, and recent-document history reset
 
 ## Privacy and action safety
 
-Application indexes, organization, recipes, launch history, and the latest 50 action records stay on the Mac. Settings includes a single reset for launch and action history. LaunchDeck actions are typed and validated: AI output cannot invent target or action identifiers, file/directory types are checked before execution, system settings use fixed destinations, and Shortcuts—including those inside imported recipes—must be explicitly approved. Elevated actions show a full preview and require confirmation.
+Application indexes, organization, recipes, launch history, recent documents, and the latest 50 action records stay on the Mac. Recent documents retain at most 30 entries. Settings includes a single reset for launch, action, and recent-document history. LaunchDeck actions are typed and validated: AI output cannot invent target or action identifiers, file/directory types are checked before execution, system settings use fixed destinations, and Shortcuts—including those inside imported recipes—must be explicitly approved. Elevated actions show a full preview and require confirmation.
 
 ## Performance benchmark
 

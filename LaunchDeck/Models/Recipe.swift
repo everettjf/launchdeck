@@ -1,6 +1,6 @@
 import Foundation
 
-struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
+nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
     enum Operation: Codable, Hashable, Sendable {
         case openApplication(identifier: String, name: String)
         case openProject(path: String)
@@ -42,19 +42,31 @@ struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-struct Recipe: Codable, Hashable, Identifiable, Sendable {
+nonisolated struct Recipe: Codable, Hashable, Identifiable, Sendable {
     var id: UUID
     var name: String
+    var variables: [RecipeVariable]
     var steps: [RecipeStep]
 
-    init(id: UUID = UUID(), name: String, steps: [RecipeStep]) {
+    init(id: UUID = UUID(), name: String, variables: [RecipeVariable] = [], steps: [RecipeStep]) {
         self.id = id
         self.name = name
+        self.variables = variables
         self.steps = steps
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, variables, steps }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        variables = try container.decodeIfPresent([RecipeVariable].self, forKey: .variables) ?? []
+        steps = try container.decode([RecipeStep].self, forKey: .steps)
     }
 }
 
-enum RecipeValidation {
+nonisolated enum RecipeValidation {
     static let maximumSteps = 50
 
     static func error(for recipe: Recipe) -> String? {
@@ -62,6 +74,22 @@ enum RecipeValidation {
         if recipe.steps.isEmpty { return "A recipe must contain at least one step." }
         if recipe.steps.count > maximumSteps { return "A recipe can contain at most \(maximumSteps) steps." }
         if Set(recipe.steps.map(\.id)).count != recipe.steps.count { return "Recipe step identifiers must be unique." }
+        let names = recipe.variables.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if names.contains(where: \.isEmpty) { return "Recipe variable names are required." }
+        if Set(names).count != names.count { return "Recipe variable names must be unique." }
+        if names.contains(where: { RecipeVariableResolver.placeholders(in: "{{\($0)}}").first != $0 }) {
+            return "Recipe variable names must begin with a letter and contain only letters, numbers, hyphens, or underscores."
+        }
+        let placeholders = Set(recipe.steps.flatMap { step -> [String] in
+            switch step.operation {
+            case .openApplication(let identifier, let name):
+                return RecipeVariableResolver.placeholders(in: identifier) + RecipeVariableResolver.placeholders(in: name)
+            case .openProject(let path), .openTerminal(let path), .runShortcut(let path):
+                return RecipeVariableResolver.placeholders(in: path)
+            }
+        })
+        let undeclared = placeholders.subtracting(names).sorted()
+        if !undeclared.isEmpty { return "Declare recipe variables: \(undeclared.joined(separator: ", "))." }
         return nil
     }
 }

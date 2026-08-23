@@ -13,18 +13,12 @@ struct ContentView: View {
     @State private var didAppear = false
     @State private var isCreatingFolder = false
     @State private var newFolderName: String = ""
-
-    private var searchResults: [DiscoveredApp] {
-        let local = appState.appsMatchingSearch()
-        guard searchText.hasPrefix("/"), !appState.semanticSearchResults.isEmpty else {
-            return local
-        }
-        let semanticIDs = Set(appState.semanticSearchResults.map(\.identifier))
-        return appState.semanticSearchResults + local.filter { !semanticIDs.contains($0.identifier) }
-    }
+    @State private var searchSelection = SearchSelection()
+    @State private var pendingRecipe: Recipe?
 
     private var unifiedResults: [SearchItem] {
         let query = searchText.hasPrefix("/") ? String(searchText.dropFirst()) : searchText
+        guard !query.isEmpty else { return [] }
         let local = appState.searchItems(matching: query)
         guard searchText.hasPrefix("/"), !appState.intentResults.isEmpty else { return local }
         let recommended = appState.intentResults.compactMap { appState.searchItem(identifier: $0.targetIdentifier) }
@@ -63,11 +57,19 @@ struct ContentView: View {
                 searchText = incoming
             }
         }
+        .onChange(of: unifiedResults.map(\.id), initial: true) {
+            searchSelection.reconcile(items: unifiedResults)
+        }
         .animation(.spring(response: 0.65, dampingFraction: 0.82), value: didAppear)
         .sheet(item: pendingPreviewBinding) { preview in
             ActionPreviewView(preview: preview,
                               onCancel: appState.cancelPendingAction,
                               onConfirm: appState.confirmPendingAction)
+        }
+        .sheet(item: $pendingRecipe) { recipe in
+            RecipeRunView(recipe: recipe) { values in
+                run(recipe, values: values)
+            }
         }
         .alert("Action Failed", isPresented: actionErrorBinding) {
             Button("OK") { appState.dismissActionError() }
@@ -98,7 +100,7 @@ struct ContentView: View {
                                     }
                                 }
                                 .buttonStyle(.borderless)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                                 .help("Clear recently launched apps")
                             })
                         }
@@ -115,8 +117,9 @@ struct ContentView: View {
                             .padding(.top, 32)
                         } else {
                             UnifiedSearchResultsView(items: unifiedResults,
+                                                     selectedIdentifier: searchSelection.selectedIdentifier,
                                                      reason: appState.intentDetail,
-                                                     onRun: appState.perform) {
+                                                     onRun: runSearchItem) {
                                 HStack(spacing: 8) {
                                     if appState.isSemanticSearching {
                                         ProgressView().controlSize(.small)
@@ -244,6 +247,14 @@ struct ContentView: View {
                 .font(.system(size: 16, weight: .medium))
                 .focused($isSearchFieldFocused)
                 .onSubmit(launchTopResult)
+                .onKeyPress(.upArrow) {
+                    searchSelection.move(by: -1, items: unifiedResults)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    searchSelection.move(by: 1, items: unifiedResults)
+                    return .handled
+                }
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
@@ -269,17 +280,10 @@ struct ContentView: View {
         .shadow(color: Color.black.opacity(isSearchFieldFocused ? 0.2 : 0.08), radius: isSearchFieldFocused ? 10 : 5, x: 0, y: 4)
     }
 
-    private var searchSectionTitle: String {
-        if !appState.semanticSearchResults.isEmpty {
-            return "AI Search Results"
-        }
-        return "Search"
-    }
-
     private var searchStatusText: String {
         switch appState.intentSearchPhase {
         case .failed(let message): return message
-        default: return searchSubtitle(for: searchResults.count)
+        default: return searchSubtitle(for: unifiedResults.count)
         }
     }
 
@@ -316,8 +320,25 @@ struct ContentView: View {
     }
 
     private func launchTopResult() {
-        guard let item = unifiedResults.first else { return }
+        guard let item = searchSelection.selectedItem(in: unifiedResults) else { return }
+        runSearchItem(item)
+    }
+
+    private func runSearchItem(_ item: SearchItem) {
+        if case .recipe(let identifier) = item.target,
+           let recipe = appState.recipeStore.recipes.first(where: { $0.id == identifier }),
+           !recipe.variables.isEmpty {
+            pendingRecipe = recipe
+            return
+        }
         appState.perform(item)
+    }
+
+    private func run(_ recipe: Recipe, values: [String: String]) {
+        guard case .resolved(let steps) = RecipeVariableResolver.resolve(
+            steps: recipe.steps, variables: recipe.variables, values: values
+        ) else { return }
+        appState.requestAction(.runRecipe(identifier: recipe.id, name: recipe.name, steps: steps))
     }
 
 private func configure() {
@@ -339,6 +360,7 @@ private func configure() {
 
 private struct UnifiedSearchResultsView<Trailing: View>: View {
     let items: [SearchItem]
+    let selectedIdentifier: String?
     let reason: (SearchItem) -> String?
     let onRun: (SearchItem) -> Void
     @ViewBuilder let trailing: () -> Trailing
@@ -362,10 +384,23 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
                         .padding(10).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    .background(rowBackground(for: item), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay {
+                        if item.id == selectedIdentifier {
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.accentColor.opacity(0.8), lineWidth: 1.5)
+                        }
+                    }
+                    .accessibilityAddTraits(item.id == selectedIdentifier ? .isSelected : [])
                 }
             }
         }
+    }
+
+    private func rowBackground(for item: SearchItem) -> AnyShapeStyle {
+        item.id == selectedIdentifier
+            ? AnyShapeStyle(Color.accentColor.opacity(0.16))
+            : AnyShapeStyle(.regularMaterial)
     }
 
     private func icon(_ kind: SearchItemKind) -> String {

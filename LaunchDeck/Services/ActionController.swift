@@ -11,6 +11,7 @@ final class ActionController: ObservableObject {
     private let historyStore: ActionHistoryStore
     var appProvider: (String) -> URL?
     var applicationOpened: (String) -> Void = { _ in }
+    var documentOpened: (String) -> Void = { _ in }
 
     init(historyStore: ActionHistoryStore = ActionHistoryStore(),
          appProvider: @escaping (String) -> URL? = { _ in nil }) {
@@ -81,14 +82,21 @@ final class ActionController: ObservableObject {
                 NSWorkspace.shared.open([url], withApplicationAt: applicationURL, configuration: configuration) { [weak self] _, error in
                     Task { @MainActor in
                         if let error { self?.fail(action, message: error.localizedDescription) }
-                        else { self?.complete(action, succeeded: true) }
+                        else {
+                            self?.complete(action, succeeded: true)
+                            self?.documentOpened(path)
+                        }
                     }
                 }
             } else {
-                complete(action, succeeded: NSWorkspace.shared.open(url))
+                let succeeded = NSWorkspace.shared.open(url)
+                complete(action, succeeded: succeeded)
+                if succeeded { documentOpened(path) }
             }
         case .openProject(let path):
-            complete(action, succeeded: NSWorkspace.shared.open(URL(fileURLWithPath: path)))
+            let succeeded = NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            complete(action, succeeded: succeeded)
+            if succeeded { documentOpened(path) }
         case .openTerminal(let directory):
             let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
             let configuration = NSWorkspace.OpenConfiguration()
@@ -126,7 +134,10 @@ final class ActionController: ObservableObject {
             }
             if succeeded { applicationOpened(identifier) }
             return succeeded
-        case .openProject(let path): return NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        case .openProject(let path):
+            let succeeded = NSWorkspace.shared.open(URL(fileURLWithPath: path))
+            if succeeded { documentOpened(path) }
+            return succeeded
         case .openTerminal(let path):
             let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
             let configuration = NSWorkspace.OpenConfiguration(); configuration.arguments = [path]
