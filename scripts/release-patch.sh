@@ -168,7 +168,7 @@ else
     CODE_SIGNING_ALLOWED=NO \
     test
 
-  echo "Building and signing LaunchDeck $version…"
+  echo "Building and signing LaunchDeck ${version}…"
   xcodebuild \
     -project "$project_root/LaunchDeck.xcodeproj" \
     -scheme LaunchDeck \
