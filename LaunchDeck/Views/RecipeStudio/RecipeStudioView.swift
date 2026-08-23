@@ -226,7 +226,18 @@ struct RecipeStudioView: View {
             HStack { Text("Validation & Run Log").font(.headline); Spacer(); Text("\(studio.validationIssues.count) issues").foregroundStyle(.secondary) }
             if studio.validationIssues.isEmpty { Label("Ready to run", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
             else { ForEach(studio.validationIssues.prefix(4)) { issue in Label(issue.message, systemImage: issue.severity == .error ? "xmark.circle" : "exclamationmark.triangle").foregroundStyle(issue.severity == .error ? .red : .orange) } }
-            if let receipt = studio.lastReceipt { Text("Last run: \(receipt.succeeded ? "Succeeded" : "Failed") · \(receipt.nodes.count) blocks · \(receipt.completedAt.formatted(date: .omitted, time: .standard))").font(.caption.monospaced()) }
+            if let receipt = studio.lastReceipt {
+                HStack {
+                    Text("Last run: \(receipt.succeeded ? "Succeeded" : "Failed") · \(receipt.nodes.count) blocks · \(receipt.completedAt.formatted(date: .omitted, time: .standard))").font(.caption.monospaced())
+                    Spacer()
+                    if receipt.canUndo { Button("Undo Run") { studio.undoLastRun(using: appState.workflowExecutionEngine) } }
+                    if receipt.canRedo { Button("Redo Run") { Task { await studio.redoLastRun(using: appState.workflowExecutionEngine) } } }
+                }
+                ForEach(receipt.nodes.suffix(4)) { node in
+                    Text("\(node.title): \(node.outcome) · \(node.route.rawValue) · \(node.duration.formatted(.number.precision(.fractionLength(3))))s")
+                        .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                }
+            }
             if let preview = studio.lastDryRun, !preview.mutations.isEmpty {
                 Text("Dry run: \(preview.orderedNodeIDs.count) blocks · mutations: \(preview.mutations.joined(separator: ", ")) · tools: \(preview.requiredTools.sorted().joined(separator: ", "))")
                     .font(.caption.monospaced()).lineLimit(2)
@@ -244,7 +255,11 @@ struct RecipeStudioView: View {
             Button("Redo", systemImage: "arrow.uturn.forward") { studio.redo() }.keyboardShortcut("z", modifiers: [.command, .shift]).labelStyle(.iconOnly)
             Button("Save", systemImage: "square.and.arrow.down") { studio.save(to: appState.recipeStore) }.keyboardShortcut("s")
             Button("Dry Run", systemImage: "checklist") { studio.dryRun(using: appState.workflowExecutionEngine) }
-            Button(studio.isRunning ? "Running" : "Run", systemImage: "play.fill") { Task { await studio.run(using: appState.workflowExecutionEngine) } }.disabled(!studio.canRun)
+            if studio.isRunning {
+                Button("Cancel", systemImage: "stop.fill") { studio.cancel(using: appState.workflowExecutionEngine) }
+            } else {
+                Button("Run", systemImage: "play.fill") { Task { await studio.run(using: appState.workflowExecutionEngine) } }.disabled(!studio.canRun)
+            }
         }
     }
 

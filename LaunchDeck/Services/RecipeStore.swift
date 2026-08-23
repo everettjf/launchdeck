@@ -20,7 +20,7 @@ final class RecipeStore: ObservableObject {
     }
 
     func remove(id: UUID) { recipes.removeAll { $0.id == id }; persist() }
-    func exportData() throws -> Data { try JSONEncoder().encode(recipes) }
+    func exportData() throws -> Data { try Self.encoder().encode(recipes) }
     func importData(_ data: Data) throws {
         let imported = try JSONDecoder().decode([Recipe].self, from: data)
         if let message = imported.compactMap(RecipeValidation.error).first {
@@ -31,7 +31,12 @@ final class RecipeStore: ObservableObject {
         recipes = merged.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         persist()
     }
-    private func persist() { defaults.set(try? JSONEncoder().encode(recipes), forKey: key) }
+    private func persist() { defaults.set(try? Self.encoder().encode(recipes), forKey: key) }
+    private static func encoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
 }
 
 enum RecipeStoreError: LocalizedError {

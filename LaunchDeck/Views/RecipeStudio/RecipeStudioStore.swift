@@ -147,6 +147,26 @@ final class RecipeStudioStore {
         message = lastDryRun?.isReady == true ? "Dry run complete. Review the console before running." : "Dry run found blocking issues."
     }
 
+    func cancel(using engine: WorkflowExecutionEngine) { engine.cancel() }
+
+    func undoLastRun(using engine: WorkflowExecutionEngine) {
+        guard var receipt = lastReceipt, receipt.canUndo else { return }
+        do {
+            try engine.undo(receipt)
+            receipt.wasUndone = true
+            lastReceipt = receipt
+            message = "Run effects were undone."
+        } catch { message = "Undo failed: \(error.localizedDescription)" }
+    }
+
+    func redoLastRun(using engine: WorkflowExecutionEngine) async {
+        guard let receipt = lastReceipt, receipt.canRedo else { return }
+        isRunning = true
+        lastReceipt = await engine.redo(receipt)
+        isRunning = false
+        message = lastReceipt?.succeeded == true ? "Run repeated." : "Redo failed."
+    }
+
     func generate(using service: WorkflowAIService) async {
         guard !copilotPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         isGenerating = true
