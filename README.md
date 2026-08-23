@@ -47,6 +47,19 @@ Upgrade later with `brew upgrade --cask launchdeck`. The Homebrew build is signe
 
 Run the core logic tests with `cd Core && swift test`.
 
+## Publish a Patch Release
+
+With a clean `main` branch matching `origin/main`, export the Apple notarization credentials and run:
+
+```bash
+export APPLE_ID="developer@example.com"
+export APPLE_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+export APPLE_TEAM_ID="YPV49M8592"
+scripts/release-patch.sh
+```
+
+The script increments the latest semantic-version patch, updates the Xcode marketing/build versions, runs Core and app tests, creates a universal Developer ID-signed build, submits it to Apple for notarization, verifies the final ZIP, commits and tags the version, creates the GitHub Release, updates `everettjf/homebrew-tap`, and verifies the published cask. If publication stops after the tag is created, rerunning the script resumes that release instead of incrementing the patch again.
+
 ## Usage
 
 - Type to search every indexed object without waiting for AI
