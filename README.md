@@ -2,7 +2,7 @@
 
 Repository: <https://github.com/everettjf/launchdeck>
 
-[https://xnu.app/launchdeck/](https://xnu.app/launchdeck/)
+[Website](https://everettjf.github.io/launchdeck/) · [Mac App Store](https://apps.apple.com/us/app/startmyapp-fast-app-launch/id6753610893) · [Discord](https://discord.gg/eGzEaP6TzR)
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eGzEaP6TzR)
 
