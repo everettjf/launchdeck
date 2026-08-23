@@ -131,6 +131,7 @@ final class AppState: ObservableObject {
         self.workflowExecutionEngine = workflowExecutionEngine
         self.recentSearchQueries = searchLearningStore.snapshot.recentQueries
         workflowNodeExecutor.instantSendProvider = { [weak self] in self?.instantSendObjects ?? [] }
+        workflowNodeExecutor.approvedShortcutsProvider = { [weak self] in Set(self?.preferences.approvedShortcuts ?? []) }
 
         // Forward controller changes so views observing AppState stay live
         layoutController.objectWillChange
@@ -594,9 +595,30 @@ final class AppState: ObservableObject {
         case .shortcut(let name): action = .runShortcut(name: name)
         case .recipe(let identifier):
             if let recipe = recipeStore.recipes.first(where: { $0.id == identifier }), recipe.workflow != nil {
+                let workflow = recipe.resolvedWorkflow
+                var values: [String: String] = [:]
+                for variable in workflow.variables {
+                    guard let value = prompt(title: "Run \(workflow.name)",
+                                             message: "Value for \(variable.name) (\(variable.valueType.rawValue)):",
+                                             value: variable.defaultValue) else { return }
+                    values[variable.name] = value
+                }
+                let preview = workflowExecutionEngine.dryRun(workflow)
+                guard preview.isReady else {
+                    actionController.presentError(preview.issues.first(where: { $0.severity == .error })?.message ?? "The workflow is invalid.")
+                    return
+                }
+                if workflow.policy.requiresDryRunBeforeMutation, preview.requiresConfirmation {
+                    let alert = NSAlert()
+                    alert.messageText = "Run “\(workflow.name)”?"
+                    alert.informativeText = "Mutations: \(preview.mutations.joined(separator: ", "))\nTools: \(preview.requiredTools.sorted().joined(separator: ", "))"
+                    alert.addButton(withTitle: "Run")
+                    alert.addButton(withTitle: "Cancel")
+                    guard alert.runModal() == .alertFirstButtonReturn else { return }
+                }
                 Task { [weak self] in
                     guard let self else { return }
-                    let receipt = await self.workflowExecutionEngine.run(recipe.resolvedWorkflow)
+                    let receipt = await self.workflowExecutionEngine.run(workflow, variableValues: values)
                     if !receipt.succeeded {
                         self.actionController.presentError(receipt.nodes.last?.error ?? "The workflow could not run.")
                     }

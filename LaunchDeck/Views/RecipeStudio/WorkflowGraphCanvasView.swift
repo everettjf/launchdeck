@@ -4,11 +4,15 @@ struct WorkflowGraphCanvasView: View {
     @Bindable var studio: RecipeStudioStore
     @State private var scale = 1.0
     @State private var pendingOutput: (UUID, String)?
+    @State private var draggingNodeID: UUID?
+    @State private var dragOrigin = WorkflowPoint.zero
 
     private let nodeSize = CGSize(width: 210, height: 118)
 
     var body: some View {
         GeometryReader { geometry in
+            let contentWidth = max(1600, (studio.workflow.nodes.map(\.position.x).max() ?? 0) + nodeSize.width + 300)
+            let contentHeight = max(1200, (studio.workflow.nodes.map(\.position.y).max() ?? 0) + nodeSize.height + 300)
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     grid
@@ -19,23 +23,40 @@ struct WorkflowGraphCanvasView: View {
                             .position(x: node.position.x + nodeSize.width / 2,
                                       y: node.position.y + nodeSize.height / 2)
                             .gesture(DragGesture().onChanged { value in
-                                studio.updateSelected { selected in
-                                    guard selected.id == node.id else { return }
-                                    selected.position = .init(x: max(0, node.position.x + value.translation.width / scale),
-                                                              y: max(0, node.position.y + value.translation.height / scale))
+                                if draggingNodeID != node.id {
+                                    draggingNodeID = node.id
+                                    dragOrigin = node.position
+                                    studio.selectedNodeID = node.id
+                                    studio.beginContinuousEdit()
                                 }
-                            })
+                                studio.setPosition(.init(x: max(0, dragOrigin.x + value.translation.width / scale),
+                                                         y: max(0, dragOrigin.y + value.translation.height / scale)),
+                                                   for: node.id)
+                            }.onEnded { _ in draggingNodeID = nil })
                     }
                 }
-                .frame(width: max(1600, geometry.size.width / scale),
-                       height: max(1200, geometry.size.height / scale), alignment: .topLeading)
+                .frame(width: max(contentWidth, geometry.size.width / scale),
+                       height: max(contentHeight, geometry.size.height / scale), alignment: .topLeading)
                 .scaleEffect(scale, anchor: .topLeading)
+                .frame(width: max(contentWidth, geometry.size.width / scale) * scale,
+                       height: max(contentHeight, geometry.size.height / scale) * scale,
+                       alignment: .topLeading)
             }
             .background(Color(nsColor: .underPageBackgroundColor))
             .gesture(MagnifyGesture().onChanged { scale = min(2, max(0.45, $0.magnification)) })
         }
         .accessibilityLabel("Workflow graph canvas")
         .accessibilityHint("Use Outline mode for a complete keyboard-accessible workflow editor.")
+        .focusable()
+        .onMoveCommand { direction in
+            switch direction {
+            case .left: studio.nudgeSelection(dx: -10, dy: 0)
+            case .right: studio.nudgeSelection(dx: 10, dy: 0)
+            case .up: studio.nudgeSelection(dx: 0, dy: -10)
+            case .down: studio.nudgeSelection(dx: 0, dy: 10)
+            @unknown default: break
+            }
+        }
     }
 
     private var grid: some View {

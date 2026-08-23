@@ -6,10 +6,12 @@ final class DefaultWorkflowNodeExecutor: WorkflowNodeExecuting {
     enum ExecutionError: LocalizedError {
         case unsupported(String)
         case missingInput(String)
+        case permissionDenied(String)
         var errorDescription: String? {
             switch self {
             case .unsupported(let value): "Unsupported workflow block: \(value)"
             case .missingInput(let value): "Missing workflow input: \(value)"
+            case .permissionDenied(let value): "Workflow permission denied: \(value)"
             }
         }
     }
@@ -17,12 +19,15 @@ final class DefaultWorkflowNodeExecutor: WorkflowNodeExecuting {
     private let performer: ObjectActionPerformer
     private let AI: WorkflowAIService
     var instantSendProvider: () -> [LaunchObject]
+    var approvedShortcutsProvider: () -> Set<String>
 
     init(performer: ObjectActionPerformer = ObjectActionPerformer(), AI: WorkflowAIService,
-         instantSendProvider: @escaping () -> [LaunchObject] = { [] }) {
+         instantSendProvider: @escaping () -> [LaunchObject] = { [] },
+         approvedShortcutsProvider: @escaping () -> Set<String> = { [] }) {
         self.performer = performer
         self.AI = AI
         self.instantSendProvider = instantSendProvider
+        self.approvedShortcutsProvider = approvedShortcutsProvider
     }
 
     func execute(node: WorkflowNode, inputs: [String: WorkflowValue], workflow: WorkflowDefinition) async throws -> WorkflowNodeExecutionResult {
@@ -74,6 +79,7 @@ final class DefaultWorkflowNodeExecutor: WorkflowNodeExecuting {
             return deterministic(["control": .none])
         case "action.run-shortcut":
             guard let name = inputs["shortcut"]?.stringValue else { throw ExecutionError.missingInput("Shortcut") }
+            guard approvedShortcutsProvider().contains(name) else { throw ExecutionError.permissionDenied("Shortcut “\(name)” is not approved") }
             let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts"); process.arguments = ["run", name]
             try process.run(); process.waitUntilExit()
             guard process.terminationStatus == 0 else { throw ExecutionError.unsupported("Shortcut failed") }

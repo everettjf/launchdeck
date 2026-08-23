@@ -35,8 +35,37 @@ nonisolated struct WorkflowNodeReceipt: Codable, Hashable, Identifiable, Sendabl
     let duration: TimeInterval
     let outcome: String
     let route: WorkflowModelRoute
+    let inputTypes: [String: WorkflowValueType]
     let outputTypes: [String: WorkflowValueType]
+    let toolIDs: Set<String>
     let error: String?
+
+    init(id: UUID, nodeID: UUID, title: String, startedAt: Date, duration: TimeInterval,
+         outcome: String, route: WorkflowModelRoute, inputTypes: [String: WorkflowValueType] = [:],
+         outputTypes: [String: WorkflowValueType], toolIDs: Set<String> = [], error: String?) {
+        self.id = id; self.nodeID = nodeID; self.title = title; self.startedAt = startedAt
+        self.duration = duration; self.outcome = outcome; self.route = route
+        self.inputTypes = inputTypes; self.outputTypes = outputTypes; self.toolIDs = toolIDs; self.error = error
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, nodeID, title, startedAt, duration, outcome, route, inputTypes, outputTypes, toolIDs, error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        nodeID = try container.decode(UUID.self, forKey: .nodeID)
+        title = try container.decode(String.self, forKey: .title)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        duration = try container.decode(TimeInterval.self, forKey: .duration)
+        outcome = try container.decode(String.self, forKey: .outcome)
+        route = try container.decode(WorkflowModelRoute.self, forKey: .route)
+        inputTypes = try container.decodeIfPresent([String: WorkflowValueType].self, forKey: .inputTypes) ?? [:]
+        outputTypes = try container.decodeIfPresent([String: WorkflowValueType].self, forKey: .outputTypes) ?? [:]
+        toolIDs = try container.decodeIfPresent(Set<String>.self, forKey: .toolIDs) ?? []
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+    }
 }
 
 nonisolated struct WorkflowExecutionReceipt: Codable, Hashable, Identifiable, Sendable {
@@ -58,6 +87,15 @@ nonisolated struct WorkflowNodeExecutionResult: Sendable {
     var outputs: [String: WorkflowValue]
     var route: WorkflowModelRoute
     var undoOperation: WorkflowUndoOperation?
+}
+
+nonisolated struct WorkflowDryRunReport: Hashable, Sendable {
+    let issues: [WorkflowValidationIssue]
+    let orderedNodeIDs: [UUID]
+    let mutations: [String]
+    let requiredTools: Set<String>
+    var isReady: Bool { !issues.contains { $0.severity == .error } }
+    var requiresConfirmation: Bool { !mutations.isEmpty }
 }
 
 @MainActor protocol WorkflowNodeExecuting {
@@ -102,6 +140,7 @@ final class WorkflowExecutionEngine: ObservableObject {
     private let receiptStore: WorkflowReceiptStore
     private let files: FileOperationService
     private var isCancellationRequested = false
+    private var activeTask: Task<WorkflowExecutionReceipt, Never>?
 
     init(executor: any WorkflowNodeExecuting, receiptStore: WorkflowReceiptStore,
          files: FileOperationService = FileOperationService()) {
@@ -110,14 +149,30 @@ final class WorkflowExecutionEngine: ObservableObject {
         self.files = files
     }
 
-    func dryRun(_ workflow: WorkflowDefinition) -> [WorkflowValidationIssue] {
-        WorkflowValidator.validate(workflow)
+    func dryRun(_ workflow: WorkflowDefinition) -> WorkflowDryRunReport {
+        let issues = WorkflowValidator.validate(workflow)
+        let enabledDefinitions = workflow.nodes.filter(\.isEnabled).compactMap { WorkflowNodeCatalog.definition(for: $0.kindIdentifier) }
+        return .init(issues: issues,
+                     orderedNodeIDs: WorkflowValidator.topologicalOrder(for: workflow) ?? [],
+                     mutations: enabledDefinitions.filter(\.isMutating).map(\.title),
+                     requiredTools: Set(enabledDefinitions.flatMap(\.requiredToolIDs)))
     }
 
-    func run(_ workflow: WorkflowDefinition) async -> WorkflowExecutionReceipt {
+    func run(_ workflow: WorkflowDefinition, variableValues: [String: String] = [:]) async -> WorkflowExecutionReceipt {
+        activeTask?.cancel()
+        let task = Task { await performRun(workflow, variableValues: variableValues) }
+        activeTask = task
+        let receipt = await task.value
+        activeTask = nil
+        return receipt
+    }
+
+    private func performRun(_ workflow: WorkflowDefinition,
+                            variableValues: [String: String]) async -> WorkflowExecutionReceipt {
         isCancellationRequested = false
         state = .validating
-        let errors = WorkflowValidator.validate(workflow).filter { $0.severity == .error }
+        let preview = dryRun(workflow)
+        let errors = preview.issues.filter { $0.severity == .error }
         guard errors.isEmpty, let order = WorkflowValidator.topologicalOrder(for: workflow) else {
             let message = errors.first?.message ?? "Workflow graph is invalid."
             state = .failed(message)
@@ -131,15 +186,24 @@ final class WorkflowExecutionEngine: ObservableObject {
         var outputs: [UUID: [String: WorkflowValue]] = [:]
         var undo: [WorkflowUndoOperation] = []
         let nodes = Dictionary(uniqueKeysWithValues: workflow.nodes.map { ($0.id, $0) })
+        var runtimeVariables = Dictionary(uniqueKeysWithValues: workflow.variables.map { ($0.name, $0.defaultValue) })
+        runtimeVariables.merge(variableValues) { _, supplied in supplied }
+        let missingVariables = requiredVariables(in: workflow).filter { runtimeVariables[$0, default: ""].isEmpty }
+        if !missingVariables.isEmpty {
+            let message = "Missing workflow variables: \(missingVariables.sorted().joined(separator: ", "))."
+            state = .failed(message)
+            return failedReceipt(workflow, message: message)
+        }
 
         for nodeID in order {
             if Task.isCancelled || isCancellationRequested {
-                if workflow.policy.rollbackOnFailure { rollback(undo) }
+                let rolledBack = workflow.policy.rollbackOnFailure && rollback(undo)
                 state = .cancelled
                 return finish(workflow, id: receiptID, startedAt: startedAt, succeeded: false,
-                              rolledBack: workflow.policy.rollbackOnFailure, nodes: nodeReceipts, undo: undo)
+                              rolledBack: rolledBack, nodes: nodeReceipts, undo: undo)
             }
-            guard let node = nodes[nodeID], node.isEnabled else { continue }
+            guard let storedNode = nodes[nodeID], storedNode.isEnabled else { continue }
+            let node = resolved(node: storedNode, variables: runtimeVariables)
             guard RecipeRunner.conditionMatches(node.condition) else {
                 nodeReceipts.append(.init(id: UUID(), nodeID: node.id, title: node.title, startedAt: .now,
                                           duration: 0, outcome: "skipped", route: .deterministic,
@@ -148,23 +212,36 @@ final class WorkflowExecutionEngine: ObservableObject {
             }
             activeNodeID = nodeID
             let nodeStartedAt = Date()
+            let inputs = resolvedInputs(for: node, workflow: workflow, outputs: outputs)
+            let toolIDs = WorkflowNodeCatalog.definition(for: node.kindIdentifier)?.requiredToolIDs ?? []
             do {
-                let inputs = resolvedInputs(for: node, workflow: workflow, outputs: outputs)
                 let result = try await executeWithRetry(node: node, inputs: inputs, workflow: workflow)
                 outputs[nodeID] = result.outputs
+                if let outputVariable = node.outputVariable,
+                   let value = result.outputs.keys.sorted().filter({ $0 != "control" }).compactMap({ result.outputs[$0]?.stringValue }).first {
+                    runtimeVariables[outputVariable] = value
+                }
                 if let operation = result.undoOperation { undo.append(operation) }
                 nodeReceipts.append(.init(id: UUID(), nodeID: node.id, title: node.title, startedAt: nodeStartedAt,
                                           duration: Date().timeIntervalSince(nodeStartedAt), outcome: "succeeded",
-                                          route: result.route, outputTypes: result.outputs.mapValues(\.valueType), error: nil))
+                                          route: result.route, inputTypes: inputs.mapValues(\.valueType),
+                                          outputTypes: result.outputs.mapValues(\.valueType), toolIDs: toolIDs, error: nil))
             } catch {
                 nodeReceipts.append(.init(id: UUID(), nodeID: node.id, title: node.title, startedAt: nodeStartedAt,
                                           duration: Date().timeIntervalSince(nodeStartedAt), outcome: "failed",
-                                          route: .deterministic, outputTypes: [:], error: error.localizedDescription))
+                                          route: .deterministic, inputTypes: inputs.mapValues(\.valueType),
+                                          outputTypes: [:], toolIDs: toolIDs, error: error.localizedDescription))
+                if Task.isCancelled || isCancellationRequested {
+                    let rolledBack = workflow.policy.rollbackOnFailure && rollback(undo)
+                    state = .cancelled
+                    return finish(workflow, id: receiptID, startedAt: startedAt, succeeded: false,
+                                  rolledBack: rolledBack, nodes: nodeReceipts, undo: undo)
+                }
                 if node.failurePolicy == .continueNext || node.isOptional { continue }
-                if workflow.policy.rollbackOnFailure { rollback(undo) }
+                let rolledBack = workflow.policy.rollbackOnFailure && rollback(undo)
                 state = .failed(error.localizedDescription)
                 return finish(workflow, id: receiptID, startedAt: startedAt, succeeded: false,
-                              rolledBack: workflow.policy.rollbackOnFailure, nodes: nodeReceipts, undo: undo)
+                              rolledBack: rolledBack, nodes: nodeReceipts, undo: undo)
             }
         }
         activeNodeID = nil
@@ -174,7 +251,7 @@ final class WorkflowExecutionEngine: ObservableObject {
         return receipt
     }
 
-    func cancel() { isCancellationRequested = true }
+    func cancel() { isCancellationRequested = true; activeTask?.cancel() }
 
     func undo(_ receipt: WorkflowExecutionReceipt) throws {
         guard receipt.canUndo else { return }
@@ -196,6 +273,61 @@ final class WorkflowExecutionEngine: ObservableObject {
         return values
     }
 
+    private func resolved(node: WorkflowNode, variables: [String: String]) -> WorkflowNode {
+        var result = node
+        result.configuration = node.configuration.mapValues { substitute($0, variables: variables) }
+        switch node.condition {
+        case .fileExists(let path): result.condition = .fileExists(path: RecipeVariableResolver.substitute(path, replacements: variables))
+        case .applicationRunning(let identifier): result.condition = .applicationRunning(identifier: RecipeVariableResolver.substitute(identifier, replacements: variables))
+        case .valueEquals(let lhs, let rhs):
+            result.condition = .valueEquals(lhs: RecipeVariableResolver.substitute(lhs, replacements: variables),
+                                            rhs: RecipeVariableResolver.substitute(rhs, replacements: variables))
+        case nil: break
+        }
+        return result
+    }
+
+    private func substitute(_ value: WorkflowValue, variables: [String: String]) -> WorkflowValue {
+        switch value {
+        case .text(let value): .text(RecipeVariableResolver.substitute(value, replacements: variables))
+        case .url(let value): .url(RecipeVariableResolver.substitute(value, replacements: variables))
+        case .file(let value): .file(RecipeVariableResolver.substitute(value, replacements: variables))
+        case .folder(let value): .folder(RecipeVariableResolver.substitute(value, replacements: variables))
+        case .application(let identifier, let path):
+            .application(identifier: RecipeVariableResolver.substitute(identifier, replacements: variables),
+                         path: RecipeVariableResolver.substitute(path, replacements: variables))
+        case .object(let object):
+            .object(LaunchObject(id: object.id, kind: object.kind, title: object.title,
+                                 value: RecipeVariableResolver.substitute(object.value, replacements: variables),
+                                 applicationIdentifier: object.applicationIdentifier))
+        case .collection(let values): .collection(values.map { substitute($0, variables: variables) })
+        case .structured(let values): .structured(values.mapValues { substitute($0, variables: variables) })
+        default: value
+        }
+    }
+
+    private func requiredVariables(in workflow: WorkflowDefinition) -> Set<String> {
+        func strings(_ value: WorkflowValue) -> [String] {
+            switch value {
+            case .text(let value), .url(let value), .file(let value), .folder(let value): [value]
+            case .application(let identifier, let path): [identifier, path]
+            case .object(let object): [object.value]
+            case .collection(let values): values.flatMap(strings)
+            case .structured(let values): values.values.flatMap(strings)
+            default: []
+            }
+        }
+        let configured = workflow.nodes.flatMap { $0.configuration.values.flatMap(strings) }
+        let conditions = workflow.nodes.compactMap(\.condition).flatMap { condition -> [String] in
+            switch condition {
+            case .fileExists(let path), .applicationRunning(let path): [path]
+            case .valueEquals(let lhs, let rhs): [lhs, rhs]
+            }
+        }
+        let produced = Set(workflow.nodes.compactMap(\.outputVariable))
+        return Set((configured + conditions).flatMap(RecipeVariableResolver.placeholders)).subtracting(produced)
+    }
+
     private func executeWithRetry(node: WorkflowNode, inputs: [String: WorkflowValue],
                                   workflow: WorkflowDefinition) async throws -> WorkflowNodeExecutionResult {
         var lastError: Error?
@@ -209,9 +341,14 @@ final class WorkflowExecutionEngine: ObservableObject {
         throw lastError ?? CancellationError()
     }
 
-    private func rollback(_ operations: [WorkflowUndoOperation]) {
+    @discardableResult
+    private func rollback(_ operations: [WorkflowUndoOperation]) -> Bool {
         state = .rollingBack
-        for operation in operations.reversed() { try? files.undo(operation.fileRecord) }
+        guard !operations.isEmpty else { return false }
+        do {
+            for operation in operations.reversed() { try files.undo(operation.fileRecord) }
+            return true
+        } catch { return false }
     }
 
     private func finish(_ workflow: WorkflowDefinition, id: UUID, startedAt: Date, succeeded: Bool,

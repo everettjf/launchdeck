@@ -33,6 +33,14 @@ nonisolated enum WorkflowValidator {
         if workflow.nodes.count > maximumNodes {
             issues.append(.init("workflow.too-large", "A workflow can contain at most \(maximumNodes) blocks."))
         }
+        let variableNames = workflow.variables.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if variableNames.contains(where: \.isEmpty) || Set(variableNames).count != variableNames.count {
+            issues.append(.init("workflow.variables", "Workflow variable names must be non-empty and unique."))
+        }
+        let outputNames = workflow.nodes.compactMap(\.outputVariable)
+        if Set(outputNames).count != outputNames.count {
+            issues.append(.init("workflow.output-variables", "Block output variable names must be unique."))
+        }
         if Set(workflow.nodes.map(\.id)).count != workflow.nodes.count {
             issues.append(.init("workflow.duplicate-node", "Block identifiers must be unique."))
         }
@@ -87,6 +95,12 @@ nonisolated enum WorkflowValidator {
             }
             if definition.isMutating, !definition.isReversible {
                 issues.append(.init("node.\(node.id).irreversible", "\(definition.title) cannot be rolled back automatically.", severity: .warning, nodeID: node.id))
+            }
+            if !workflow.policy.toolAllowlist.isEmpty {
+                let denied = definition.requiredToolIDs.subtracting(workflow.policy.toolAllowlist)
+                if !denied.isEmpty {
+                    issues.append(.init("node.\(node.id).tools", "\(definition.title) requires tools not allowed by this workflow: \(denied.sorted().joined(separator: ", ")).", nodeID: node.id))
+                }
             }
         }
 

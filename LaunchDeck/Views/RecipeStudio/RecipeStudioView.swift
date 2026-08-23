@@ -20,6 +20,10 @@ struct RecipeStudioView: View {
         .toolbar { toolbar }
         .sheet(isPresented: $showsCopilot) { copilot }
         .task { await studio.refreshAIAvailability(using: appState.workflowAIService) }
+        .onDeleteCommand {
+            if let edgeID = studio.selectedEdgeID { studio.removeEdge(edgeID); studio.selectedEdgeID = nil }
+            else { studio.removeSelection() }
+        }
         .alert("Recipe Studio", isPresented: Binding(get: { studio.message != nil }, set: { if !$0 { studio.message = nil } })) {
             Button("OK") { studio.message = nil }
         } message: { Text(studio.message ?? "") }
@@ -109,6 +113,8 @@ struct RecipeStudioView: View {
                     LabeledContent("On device", value: availability.onDevice)
                     LabeledContent("Private Cloud Compute", value: availability.privateCloudCompute)
                     LabeledContent("PCC quota", value: availability.pccQuota)
+                    LabeledContent("Local AI history", value: "\(appState.workflowAITranscriptStore.entries.count) metadata records")
+                    Button("Clear AI History", role: .destructive) { appState.workflowAITranscriptStore.clear() }
                 }
             }
             Section("Variables") {
@@ -128,6 +134,16 @@ struct RecipeStudioView: View {
                     studio.workflow.variables.append(.init(name: "variable\(studio.workflow.variables.count + 1)"))
                 }
             }
+            if !studio.workflow.variables.isEmpty {
+                Section("Run Inputs") {
+                    ForEach(studio.workflow.variables) { variable in
+                        TextField(variable.name, text: Binding(
+                            get: { studio.runVariableValues[variable.name] ?? variable.defaultValue },
+                            set: { studio.runVariableValues[variable.name] = $0 }
+                        ))
+                    }
+                }
+            }
             if let node = studio.selectedNode {
                 Section("Selected Block") {
                     TextField("Title", text: Binding(get: { node.title }, set: { value in studio.updateSelected { $0.title = value } }))
@@ -145,13 +161,33 @@ struct RecipeStudioView: View {
                         ForEach(definition.outputs) { port in Label { Text(verbatim: "\(port.name): \(port.valueType)") } icon: { Image(systemName: "arrow.left.circle") } }
                     }
                 }
+            } else if !studio.workflow.edges.isEmpty {
+                Section("Connections") {
+                    ForEach(studio.workflow.edges) { edge in
+                        Button {
+                            studio.selectedEdgeID = edge.id
+                        } label: {
+                            HStack {
+                                Text(connectionTitle(edge)).lineLimit(1)
+                                Spacer()
+                                if studio.selectedEdgeID == edge.id { Image(systemName: "checkmark") }
+                            }
+                        }.buttonStyle(.plain)
+                    }
+                    if let edgeID = studio.selectedEdgeID {
+                        Button("Delete Connection", role: .destructive) { studio.removeEdge(edgeID); studio.selectedEdgeID = nil }
+                    }
+                }
             }
         }.formStyle(.grouped)
     }
 
     @ViewBuilder private func configurationEditor(_ node: WorkflowNode) -> some View {
-        if node.kindIdentifier == "data.text" || node.kindIdentifier.hasPrefix("ai.") {
-            TextField("Prompt / value", text: configBinding("prompt", node: node), axis: .vertical).lineLimit(3...8)
+        if node.kindIdentifier == "data.text" {
+            TextField("Text value", text: configBinding("value", node: node), axis: .vertical).lineLimit(3...8)
+        }
+        if node.kindIdentifier.hasPrefix("ai.") {
+            TextField("AI instructions", text: configBinding("prompt", node: node), axis: .vertical).lineLimit(3...8)
         }
         if node.kindIdentifier == "data.folder" || node.kindIdentifier == "action.move" {
             TextField("Folder path", text: configBinding(node.kindIdentifier == "action.move" ? "target" : "value", node: node))
@@ -161,6 +197,18 @@ struct RecipeStudioView: View {
         }
         if node.kindIdentifier == "logic.approval" {
             Toggle("Approved for this run", isOn: boolConfigBinding("approved", node: node))
+        }
+        if node.kindIdentifier == "input.files" {
+            TextField("One file or folder path per line", text: objectPathsBinding(node: node), axis: .vertical).lineLimit(3...8)
+        }
+        if node.kindIdentifier == "action.open-application" {
+            TextField("Bundle identifier", text: configBinding("identifier", node: node))
+        }
+        if node.kindIdentifier == "action.open-terminal" {
+            TextField("Directory", text: configBinding("directory", node: node))
+        }
+        if node.kindIdentifier == "action.run-shortcut" {
+            TextField("Shortcut name", text: configBinding("shortcut", node: node))
         }
         if node.kindIdentifier.hasPrefix("ai.") {
             Picker("Reasoning", selection: configBinding("reasoning", node: node)) {
@@ -179,6 +227,10 @@ struct RecipeStudioView: View {
             if studio.validationIssues.isEmpty { Label("Ready to run", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
             else { ForEach(studio.validationIssues.prefix(4)) { issue in Label(issue.message, systemImage: issue.severity == .error ? "xmark.circle" : "exclamationmark.triangle").foregroundStyle(issue.severity == .error ? .red : .orange) } }
             if let receipt = studio.lastReceipt { Text("Last run: \(receipt.succeeded ? "Succeeded" : "Failed") · \(receipt.nodes.count) blocks · \(receipt.completedAt.formatted(date: .omitted, time: .standard))").font(.caption.monospaced()) }
+            if let preview = studio.lastDryRun, !preview.mutations.isEmpty {
+                Text("Dry run: \(preview.orderedNodeIDs.count) blocks · mutations: \(preview.mutations.joined(separator: ", ")) · tools: \(preview.requiredTools.sorted().joined(separator: ", "))")
+                    .font(.caption.monospaced()).lineLimit(2)
+            }
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.bar).frame(maxHeight: 150)
     }
 
@@ -188,7 +240,10 @@ struct RecipeStudioView: View {
             Button("Copilot", systemImage: "sparkles") { showsCopilot = true }
             Button("Auto Layout", systemImage: "wand.and.stars") { studio.autoLayout() }.disabled(studio.mode != .canvas)
             Button("Console", systemImage: "rectangle.bottomthird.inset.filled") { studio.consoleIsVisible.toggle() }
+            Button("Undo", systemImage: "arrow.uturn.backward") { studio.undo() }.keyboardShortcut("z").labelStyle(.iconOnly)
+            Button("Redo", systemImage: "arrow.uturn.forward") { studio.redo() }.keyboardShortcut("z", modifiers: [.command, .shift]).labelStyle(.iconOnly)
             Button("Save", systemImage: "square.and.arrow.down") { studio.save(to: appState.recipeStore) }.keyboardShortcut("s")
+            Button("Dry Run", systemImage: "checklist") { studio.dryRun(using: appState.workflowExecutionEngine) }
             Button(studio.isRunning ? "Running" : "Run", systemImage: "play.fill") { Task { await studio.run(using: appState.workflowExecutionEngine) } }.disabled(!studio.canRun)
         }
     }
@@ -215,6 +270,24 @@ struct RecipeStudioView: View {
     private func configBinding(_ key: String, node: WorkflowNode) -> Binding<String> { Binding(get: { node.configuration[key]?.stringValue ?? "" }, set: { value in studio.updateSelected { $0.configuration[key] = .text(value) } }) }
     private func numberConfigBinding(_ key: String, node: WorkflowNode) -> Binding<Double> { Binding(get: { if case .number(let value) = node.configuration[key] { value } else { 1 } }, set: { value in studio.updateSelected { $0.configuration[key] = .number(value) } }) }
     private func boolConfigBinding(_ key: String, node: WorkflowNode) -> Binding<Bool> { Binding(get: { node.configuration[key] == .boolean(true) }, set: { value in studio.updateSelected { $0.configuration[key] = .boolean(value) } }) }
+    private func objectPathsBinding(node: WorkflowNode) -> Binding<String> {
+        Binding(get: { node.configuration["objects"]?.stringValue ?? "" }, set: { value in
+            let paths = value.split(whereSeparator: \.isNewline).map(String.init)
+            studio.updateSelected { selected in
+                selected.configuration["objects"] = .collection(paths.map { path in
+                    var isDirectory: ObjCBool = false
+                    FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+                    return isDirectory.boolValue ? .folder(path) : .file(path)
+                })
+            }
+        })
+    }
+
+    private func connectionTitle(_ edge: WorkflowEdge) -> String {
+        let source = studio.workflow.nodes.first { $0.id == edge.sourceNodeID }?.title ?? "Missing"
+        let target = studio.workflow.nodes.first { $0.id == edge.targetNodeID }?.title ?? "Missing"
+        return "\(source).\(edge.sourcePortID) → \(target).\(edge.targetPortID)"
+    }
 }
 
 private extension WorkflowModelPolicy {

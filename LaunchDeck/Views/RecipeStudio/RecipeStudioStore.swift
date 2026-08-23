@@ -18,10 +18,13 @@ final class RecipeStudioStore {
     var isGenerating = false
     var isRunning = false
     var lastReceipt: WorkflowExecutionReceipt?
+    var lastDryRun: WorkflowDryRunReport?
     var message: String?
     var AIAvailability: WorkflowAIAvailability?
+    var runVariableValues: [String: String] = [:]
     private var snapshots: [WorkflowDefinition] = []
     private var redoSnapshots: [WorkflowDefinition] = []
+    private var approvedDryRunWorkflow: WorkflowDefinition?
 
     init(workflow: WorkflowDefinition = WorkflowDefinition(name: "Untitled Recipe")) {
         self.workflow = workflow
@@ -31,6 +34,7 @@ final class RecipeStudioStore {
         snapshots.removeAll(); redoSnapshots.removeAll()
         workflow = recipe.resolvedWorkflow
         selectedNodeID = nil; selectedEdgeID = nil
+        runVariableValues = Dictionary(uniqueKeysWithValues: workflow.variables.map { ($0.name, $0.defaultValue) })
         message = recipe.workflow == nil ? "Legacy Recipe migrated to Schema v2. Save to keep the upgrade." : nil
     }
 
@@ -101,6 +105,17 @@ final class RecipeStudioStore {
 
     func removeEdge(_ id: UUID) { checkpoint(); workflow.edges.removeAll { $0.id == id } }
     func autoLayout() { checkpoint(); workflow = WorkflowGraphEditor.automaticLayout(workflow) }
+    func nudgeSelection(dx: Double, dy: Double) {
+        updateSelected { node in
+            node.position.x = max(0, node.position.x + dx)
+            node.position.y = max(0, node.position.y + dy)
+        }
+    }
+    func beginContinuousEdit() { checkpoint() }
+    func setPosition(_ position: WorkflowPoint, for nodeID: UUID) {
+        guard let index = workflow.nodes.firstIndex(where: { $0.id == nodeID }) else { return }
+        workflow.nodes[index].position = position
+    }
     func undo() { guard let prior = snapshots.popLast() else { return }; redoSnapshots.append(workflow); workflow = prior }
     func redo() { guard let next = redoSnapshots.popLast() else { return }; snapshots.append(workflow); workflow = next }
 
@@ -111,10 +126,25 @@ final class RecipeStudioStore {
 
     func run(using engine: WorkflowExecutionEngine) async {
         guard canRun else { message = validationIssues.first?.message ?? "Workflow cannot run."; return }
+        let preview = engine.dryRun(workflow)
+        lastDryRun = preview
+        if workflow.policy.requiresDryRunBeforeMutation, preview.requiresConfirmation,
+           approvedDryRunWorkflow != workflow {
+            message = "Review the dry run first, then press Run again to confirm \(preview.mutations.count) mutating block(s)."
+            approvedDryRunWorkflow = workflow
+            return
+        }
         isRunning = true
-        lastReceipt = await engine.run(workflow)
+        lastReceipt = await engine.run(workflow, variableValues: runVariableValues)
         isRunning = false
         message = lastReceipt?.succeeded == true ? "Run completed." : "Run failed."
+        approvedDryRunWorkflow = nil
+    }
+
+    func dryRun(using engine: WorkflowExecutionEngine) {
+        lastDryRun = engine.dryRun(workflow)
+        approvedDryRunWorkflow = workflow
+        message = lastDryRun?.isReady == true ? "Dry run complete. Review the console before running." : "Dry run found blocking issues."
     }
 
     func generate(using service: WorkflowAIService) async {

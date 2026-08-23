@@ -34,7 +34,7 @@ nonisolated indirect enum WorkflowValueType: Codable, Hashable, Sendable, Custom
     }
 
     func accepts(_ source: WorkflowValueType) -> Bool {
-        if self == .any || source == .any || self == source { return true }
+        if self == .any || self == source { return true }
         if self == .object, [.file, .folder, .url, .application, .image, .text].contains(source) { return true }
         if case .collection(let expected) = self, case .collection(let actual) = source {
             return expected.accepts(actual)
@@ -141,6 +141,26 @@ nonisolated struct WorkflowNode: Codable, Hashable, Identifiable, Sendable {
         self.condition = condition
         self.isOptional = isOptional
         self.outputVariable = outputVariable
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kindIdentifier, title, configuration, position, isEnabled, failurePolicy,
+             retryCount, condition, isOptional, outputVariable
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kindIdentifier = try container.decode(String.self, forKey: .kindIdentifier)
+        title = try container.decode(String.self, forKey: .title)
+        configuration = try container.decodeIfPresent([String: WorkflowValue].self, forKey: .configuration) ?? [:]
+        position = try container.decodeIfPresent(WorkflowPoint.self, forKey: .position) ?? .zero
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        failurePolicy = try container.decodeIfPresent(RecipeStep.FailurePolicy.self, forKey: .failurePolicy) ?? .stop
+        retryCount = max(0, min(try container.decodeIfPresent(Int.self, forKey: .retryCount) ?? 0, 5))
+        condition = try container.decodeIfPresent(RecipeStep.Condition.self, forKey: .condition)
+        isOptional = try container.decodeIfPresent(Bool.self, forKey: .isOptional) ?? false
+        outputVariable = try container.decodeIfPresent(String.self, forKey: .outputVariable)
     }
 }
 

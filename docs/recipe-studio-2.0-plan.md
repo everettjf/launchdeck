@@ -84,4 +84,5 @@ Schema → validator → executor/receipts → vertical editor → on-device AI 
 - [x] Workflow Copilot with catalog-constrained drafts, assumptions, unresolved inputs, and accept/reject review
 - [x] PCC entitlement, availability/quota gates, reasoning levels, per-block approval, and local-only policy
 - [x] Free graph canvas with zoom, scrolling/panning, typed connection menus, node dragging, and automatic layout
-- [x] Schema/editor/execution/performance tests, static analysis, and Release build audit
+- [x] Schema/editor/execution/routing/rollback/cancellation/performance tests and unsigned Release build audit
+- [ ] Signed PCC build verification — Xcode currently reports that the refreshed provisioning profile for `com.everettjf.launchdeck` does not contain the granted managed entitlement

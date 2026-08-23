@@ -112,7 +112,7 @@ nonisolated enum RecipeVariableResolver {
         }
     }
 
-    private static func substitute(_ source: String, replacements: [String: String]) -> String {
+    static func substitute(_ source: String, replacements: [String: String]) -> String {
             let pattern = #"\{\{\s*([A-Za-z][A-Za-z0-9_-]{0,63})\s*\}\}"#
             guard let regex = try? NSRegularExpression(pattern: pattern) else { return source }
             var result = source
