@@ -15,12 +15,21 @@ struct ContentView: View {
     @State private var newFolderName: String = ""
 
     private var searchResults: [DiscoveredApp] {
-        // Use semantic results if they exist
-        if !appState.semanticSearchResults.isEmpty {
-            return appState.semanticSearchResults
+        let local = appState.appsMatchingSearch()
+        guard searchText.hasPrefix("/"), !appState.semanticSearchResults.isEmpty else {
+            return local
         }
-        // Otherwise use keyword results
-        return appState.appsMatchingSearch()
+        let semanticIDs = Set(appState.semanticSearchResults.map(\.identifier))
+        return appState.semanticSearchResults + local.filter { !semanticIDs.contains($0.identifier) }
+    }
+
+    private var unifiedResults: [SearchItem] {
+        let query = searchText.hasPrefix("/") ? String(searchText.dropFirst()) : searchText
+        let local = appState.searchItems(matching: query)
+        guard searchText.hasPrefix("/"), !appState.intentResults.isEmpty else { return local }
+        let recommended = appState.intentResults.compactMap { appState.searchItem(identifier: $0.targetIdentifier) }
+        let IDs = Set(recommended.map(\.id))
+        return recommended + local.filter { !IDs.contains($0.id) }
     }
 
     private var favoriteApps: [DiscoveredApp] {
@@ -55,6 +64,16 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.65, dampingFraction: 0.82), value: didAppear)
+        .sheet(item: pendingPreviewBinding) { preview in
+            ActionPreviewView(preview: preview,
+                              onCancel: appState.cancelPendingAction,
+                              onConfirm: appState.confirmPendingAction)
+        }
+        .alert("Action Failed", isPresented: actionErrorBinding) {
+            Button("OK") { appState.dismissActionError() }
+        } message: {
+            Text(appState.actionError ?? "")
+        }
     }
 
     private var mainContent: some View {
@@ -71,7 +90,8 @@ struct ContentView: View {
                         }
                         if preferences.showRecentApps && !recentApps.isEmpty {
                             AppGridSection(title: "Recently Launched",
-                                            apps: recentApps) {
+                                           apps: recentApps,
+                                           trailing: {
                                 Button("Clear") {
                                     withAnimation(.easeInOut(duration: 0.25)) {
                                         appState.clearRecents()
@@ -80,27 +100,11 @@ struct ContentView: View {
                                 .buttonStyle(.borderless)
                                 .foregroundColor(.secondary)
                                 .help("Clear recently launched apps")
-                            }
+                            })
                         }
                         allApplicationsSection
                     } else {
-                        if appState.isSemanticSearching {
-                            // Show loading indicator for semantic search
-                            VStack(spacing: 16) {
-                                ProgressView()
-                                    .scaleEffect(1.2)
-                                VStack(spacing: 8) {
-                                    Text("Searching with AI...")
-                                        .font(.title3.weight(.semibold))
-                                    Text("Using Apple Foundation Models to find matching apps")
-                                        .font(.callout)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.center)
-                                }
-                            }
-                            .padding(.top, 48)
-                            .frame(maxWidth: .infinity)
-                        } else if searchResults.isEmpty {
+                        if unifiedResults.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("No results")
                                     .font(.title3.weight(.semibold))
@@ -110,11 +114,19 @@ struct ContentView: View {
                             }
                             .padding(.top, 32)
                         } else {
-                            AppGridSection(title: searchSectionTitle,
-                                            apps: searchResults) {
-                                Text(searchSubtitle(for: searchResults.count))
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
+                            UnifiedSearchResultsView(items: unifiedResults,
+                                                     reason: appState.intentDetail,
+                                                     onRun: appState.perform) {
+                                HStack(spacing: 8) {
+                                    if appState.isSemanticSearching {
+                                        ProgressView().controlSize(.small)
+                                        Text("Understanding intent…")
+                                    } else {
+                                        Text(searchStatusText)
+                                    }
+                                }
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -264,11 +276,32 @@ struct ContentView: View {
         return "Search"
     }
 
+    private var searchStatusText: String {
+        switch appState.intentSearchPhase {
+        case .failed(let message): return message
+        default: return searchSubtitle(for: searchResults.count)
+        }
+    }
+
+    private var pendingPreviewBinding: Binding<ActionPreview?> {
+        Binding(
+            get: { appState.pendingActionPreview },
+            set: { if $0 == nil { appState.cancelPendingAction() } }
+        )
+    }
+
+    private var actionErrorBinding: Binding<Bool> {
+        Binding(
+            get: { appState.actionError != nil },
+            set: { if !$0 { appState.dismissActionError() } }
+        )
+    }
+
     private var searchPlaceholder: String {
         if appState.isSemanticSearchAvailable {
-            return "Search apps (use / for AI search)"
+            return "Search apps, files, projects, actions (use / for intent)"
         }
-        return "Search apps, categories, or developers"
+            return "Search apps, files, projects, actions, or recipes"
     }
 
     private var noResultsMessage: String {
@@ -283,8 +316,8 @@ struct ContentView: View {
     }
 
     private func launchTopResult() {
-        guard let app = searchResults.first else { return }
-        appState.launch(app)
+        guard let item = unifiedResults.first else { return }
+        appState.perform(item)
     }
 
 private func configure() {
@@ -301,6 +334,79 @@ private func configure() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             appState.refreshApps()
         }
+    }
+}
+
+private struct UnifiedSearchResultsView<Trailing: View>: View {
+    let items: [SearchItem]
+    let reason: (SearchItem) -> String?
+    let onRun: (SearchItem) -> Void
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack { Text("Search").font(.title2.weight(.semibold)); Spacer(); trailing() }
+            LazyVStack(spacing: 6) {
+                ForEach(items) { item in
+                    Button { onRun(item) } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: icon(item.kind)).frame(width: 24).foregroundStyle(.tint)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title).font(.body.weight(.medium)).lineLimit(1)
+                                Text(reason(item) ?? item.subtitle ?? item.kind.rawValue.capitalized)
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                            Spacer()
+                            Text(item.kind.rawValue.capitalized).font(.caption2).foregroundStyle(.tertiary)
+                        }
+                        .padding(10).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+    }
+
+    private func icon(_ kind: SearchItemKind) -> String {
+        switch kind {
+        case .application: "app"
+        case .file: "doc"
+        case .folder: "folder"
+        case .project: "hammer"
+        case .action: "bolt"
+        case .setting: "gearshape"
+        case .shortcut: "command"
+        case .recipe: "list.bullet.rectangle"
+        }
+    }
+}
+
+private struct ActionPreviewView: View {
+    let preview: ActionPreview
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Label("Action Preview", systemImage: preview.risk == .elevated ? "exclamationmark.shield" : "checkmark.shield")
+                .font(.title2.weight(.semibold))
+            Text(preview.title).font(.headline)
+            Text(preview.summary).foregroundStyle(.secondary)
+            LabeledContent("Target", value: preview.target)
+            if !preview.steps.isEmpty {
+                GroupBox("Steps") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(preview.steps.enumerated()), id: \.element.id) { index, step in
+                            Text("\(index + 1). \(step.title)").frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }.padding(.top, 4)
+                }
+            }
+            ForEach(preview.permissions, id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
+            HStack { Spacer(); Button("Cancel", role: .cancel, action: onCancel); Button("Run", action: onConfirm).keyboardShortcut(.defaultAction) }
+        }
+        .padding(24).frame(width: 520)
     }
 }
 

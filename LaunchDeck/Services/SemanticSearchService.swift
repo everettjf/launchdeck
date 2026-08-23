@@ -1,128 +1,118 @@
 import Foundation
 import FoundationModels
-import OSLog
 import LaunchDeckCore
+import OSLog
 
-private nonisolated let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "LaunchDeck", category: "SemanticSearch")
+private nonisolated let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "LaunchDeck", category: "IntentSearch")
 
-// Define the output structure using @Generable
+protocol IntentSearching: Sendable {
+    func availability() async -> IntentSearchAvailability
+    func search(query: String, candidates: [SearchItemCandidate]) async throws -> [IntentRecommendation]
+}
+
+enum IntentSearcherFactory {
+    static func make() -> any IntentSearching {
+        if #available(macOS 26.0, *) {
+            return FoundationModelsIntentSearcher()
+        }
+        return UnavailableIntentSearcher(reason: .requiresMacOS26)
+    }
+}
+
+actor UnavailableIntentSearcher: IntentSearching {
+    let reason: IntentUnavailableReason
+    init(reason: IntentUnavailableReason) { self.reason = reason }
+    func availability() -> IntentSearchAvailability { .unavailable(reason) }
+    func search(query: String, candidates: [SearchItemCandidate]) async throws -> [IntentRecommendation] { [] }
+}
+
+@available(macOS 26.0, *)
 @Generable
-struct AppMatch {
-    var appIndex: Int
-    var score: Int  // 0-100
+private struct GeneratedParameter {
+    var name: String
+    var value: String
+}
+
+@available(macOS 26.0, *)
+@Generable(description: "One installed application that can satisfy the user's intent")
+private struct GeneratedIntentMatch {
+    @Guide(description: "The exact candidate identifier")
+    var targetIdentifier: String
+    @Guide(description: "The exact registered action identifier")
+    var actionIdentifier: String
+    @Guide(description: "Action parameter names and values", .maximumCount(8))
+    var parameters: [GeneratedParameter]
+    @Guide(description: "Required parameters that cannot be inferred", .maximumCount(8))
+    var missingParameters: [String]
+    @Guide(description: "Relevance confidence from 0 through 100", .range(0...100))
+    var confidence: Int
+    @Guide(description: "A short reason, no more than one sentence")
     var reason: String
+    @Guide(description: "Short capability labels that matched the intent", .maximumCount(4))
+    var capabilities: [String]
+    @Guide(description: "Whether the action must be confirmed")
+    var requiresConfirmation: Bool
 }
 
+@available(macOS 26.0, *)
 @Generable
-struct AppSearchResult {
-    var matches: [AppMatch]
+private struct GeneratedIntentResponse {
+    @Guide(description: "At most eight relevant installed applications", .maximumCount(8))
+    var matches: [GeneratedIntentMatch]
 }
 
-actor SemanticSearchService {
-    private var model = SystemLanguageModel.default
-    private var isAvailable: Bool = false
+@available(macOS 26.0, *)
+actor FoundationModelsIntentSearcher: IntentSearching {
+    private let model = SystemLanguageModel.default
 
-    init() async {
-        // Check if Foundation Models is available using SystemLanguageModel
+    func availability() -> IntentSearchAvailability {
         switch model.availability {
-        case .available:
-            self.isAvailable = true
-        case .unavailable:
-            self.isAvailable = false
+        case .available: return .available
+        case .unavailable(.deviceNotEligible): return .unavailable(.deviceNotEligible)
+        case .unavailable(.appleIntelligenceNotEnabled): return .unavailable(.appleIntelligenceNotEnabled)
+        case .unavailable(.modelNotReady): return .unavailable(.modelNotReady)
+        case .unavailable: return .unavailable(.unknown)
         }
     }
 
-    func searchApps(_ apps: [DiscoveredApp], query: String) async -> [(app: DiscoveredApp, score: Double)] {
-        guard isAvailable else {
-            return []
-        }
-
-        // Strategy: Use concurrent batch scoring for better accuracy and speed
-        let batchSize = 50
-        let batches = stride(from: 0, to: min(apps.count, 60), by: batchSize).map { start in
-            Array(apps[start..<min(start + batchSize, apps.count)])
-        }
-
-        var allResults: [(app: DiscoveredApp, score: Double)] = []
-
-        // Process batches concurrently
-        await withTaskGroup(of: [(app: DiscoveredApp, score: Double)].self) { group in
-            for (batchIndex, batch) in batches.enumerated() {
-                group.addTask {
-                    await self.scoreBatch(batch, query: query, batchIndex: batchIndex)
-                }
-            }
-
-            for await batchResults in group {
-                allResults.append(contentsOf: batchResults)
-            }
-        }
-
-        // Sort by score and return top results
-        let sortedResults = allResults
-            .sorted { $0.score > $1.score }
-            .filter { $0.score > 0.3 }
-            .prefix(15)
-
-        return Array(sortedResults)
-    }
-
-    private func scoreBatch(_ apps: [DiscoveredApp], query: String, batchIndex: Int) async -> [(app: DiscoveredApp, score: Double)] {
-        // Build app list for this batch
-        let appsList = apps.enumerated().map { index, app in
-            let cat = app.category ?? "Utility"
-            let dev = app.developer ?? "Unknown"
-            return "Index \(index + 1): \(app.name) (\(cat)) by \(dev)"
+    func search(query: String, candidates: [SearchItemCandidate]) async throws -> [IntentRecommendation] {
+        guard case .available = availability(), !candidates.isEmpty else { return [] }
+        let candidateText = candidates.map { candidate in
+            let item = candidate.item
+            return "ID: \(item.id) | Type: \(item.kind.rawValue) | Name: \(item.title) | Metadata: \(item.subtitle ?? "") | Keywords: \(item.keywords.prefix(8).joined(separator: ", "))"
         }.joined(separator: "\n")
-
-        let instructions = """
-        Find macOS applications that match the search query: "\(query)"
-
-        Available applications:
-        \(appsList)
-
-        For each matching app, return:
-        - appIndex: the index number (1-based)
-        - score: relevance score from 0-100
-        - reason: brief explanation why it matches
-
-        Consider:
-        - Name similarity to query
-        - Category relevance (e.g., "good" → productivity/utility apps)
-        - Common use cases
-        - Developer reputation
-
-        Only include apps with score > 30.
+        let actions = ActionRegistry.shared.descriptors.map {
+            "ID: \($0.id) | Name: \($0.title) | Required parameters: \($0.requiredParameters.sorted().joined(separator: ", ")) | Confirmation: \($0.requiresConfirmation)"
+        }.joined(separator: "\n")
+        let prompt = """
+        The user wants to: <user-intent>\(query)</user-intent>
+        Select a target only from the candidates and an action only from the registry. Never invent identifiers.
+        Return parameters needed by the action and list any required values that are not safely inferable.
+        Rank recommendations by how directly they accomplish the intent. Return an empty list when none fit.
+        Keep each reason factual and concise.
+        <candidates>
+        \(candidateText)
+        </candidates>
+        <action-registry>
+        \(actions)
+        </action-registry>
         """
-
         do {
-            // Create a LanguageModelSession for the AI call
-            let session = LanguageModelSession()
-
-            // Use guided generation to get structured output
-            let response = try await session.respond(
-                to: instructions,
-                generating: AppSearchResult.self
-            )
-
-            let result = response.content
-
-            // Convert to our result format
-            var results: [(app: DiscoveredApp, score: Double)] = []
-            for match in result.matches {
-                let index = match.appIndex - 1
-                guard index >= 0 && index < apps.count else {
-                    continue
-                }
-                let normalizedScore = Double(match.score) / 100.0
-                results.append((apps[index], normalizedScore))
+            let response = try await LanguageModelSession().respond(to: prompt, generating: GeneratedIntentResponse.self)
+            let generated = response.content.matches.map { match in
+                IntentRecommendation(targetIdentifier: match.targetIdentifier,
+                                     actionIdentifier: match.actionIdentifier,
+                                     parameters: Dictionary(match.parameters.map { ($0.name, $0.value) }, uniquingKeysWith: { first, _ in first }),
+                                     missingParameters: match.missingParameters,
+                                     confidence: Double(match.confidence) / 100,
+                                     reason: match.reason,
+                                     requiresConfirmation: match.requiresConfirmation)
             }
-
-            return results
-
+            return IntentRecommendationValidator.validate(generated,
+                allowedTargets: Set(candidates.map(\.id)), allowedActions: ActionRegistry.shared.identifiers)
         } catch {
-            logger.error("Semantic search batch \(batchIndex) failed: \(error.localizedDescription)")
-            return []
+            logger.error("Intent search failed: \(error.localizedDescription)")
+            throw error
         }
     }
 }

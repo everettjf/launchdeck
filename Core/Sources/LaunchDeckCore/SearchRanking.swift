@@ -33,12 +33,8 @@ public enum SearchRanking {
                               favorites: Set<String>,
                               recents: [RecentLaunch],
                               layout: [AppCollectionItem]) -> [DiscoveredApp] {
-        let term = query.lowercased()
-        return apps
-            .filter { $0.searchableText.contains(term) }
-            .sorted {
-                rank(for: $0, favorites: favorites, recents: recents, layout: layout)
-                    > rank(for: $1, favorites: favorites, recents: recents, layout: layout)
-            }
+        SearchIndex(apps: apps)
+            .search(query, favorites: favorites, recents: recents, layout: layout)
+            .map(\.app)
     }
 }

@@ -101,6 +101,8 @@ final class AppPreferences: ObservableObject {
     @Published var globalShortcut: KeyboardShortcutPreference
     @Published var hiddenApps: Set<String>
     @Published var showHiddenApps: Bool
+    @Published var approvedShortcuts: [String]
+    @Published var indexedRootPaths: [String]
 
     private let defaults: UserDefaults
     fileprivate var cancellables = Set<AnyCancellable>()
@@ -115,6 +117,8 @@ final class AppPreferences: ObservableObject {
         static let globalShortcut = "preferences.globalShortcut"
         static let hiddenApps = "preferences.hiddenApps"
         static let showHiddenApps = "preferences.showHiddenApps"
+        static let approvedShortcuts = "preferences.approvedShortcuts"
+        static let indexedRootPaths = "preferences.indexedRootPaths"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -156,6 +160,8 @@ final class AppPreferences: ObservableObject {
             defaults.set(false, forKey: Keys.showHiddenApps)
         }
         showHiddenApps = defaults.bool(forKey: Keys.showHiddenApps)
+        approvedShortcuts = defaults.stringArray(forKey: Keys.approvedShortcuts) ?? []
+        indexedRootPaths = defaults.stringArray(forKey: Keys.indexedRootPaths) ?? []
 
         if let shortcutData = defaults.data(forKey: Keys.globalShortcut),
            let decoded = try? JSONDecoder().decode(KeyboardShortcutPreference.self, from: shortcutData) {
@@ -241,6 +247,18 @@ final class AppPreferences: ObservableObject {
             .sink { [weak self] value in
                 self?.defaults.set(value, forKey: Keys.showHiddenApps)
             }
+            .store(in: &cancellables)
+
+        $approvedShortcuts
+            .dropFirst()
+            .sink { [weak self] value in
+                self?.defaults.set(value, forKey: Keys.approvedShortcuts)
+            }
+            .store(in: &cancellables)
+
+        $indexedRootPaths
+            .dropFirst()
+            .sink { [weak self] value in self?.defaults.set(value, forKey: Keys.indexedRootPaths) }
             .store(in: &cancellables)
     }
 }

@@ -5,6 +5,7 @@ struct AppGridSection<HeaderTrailing: View>: View {
     let title: String
     let apps: [DiscoveredApp]
     let emptyState: String?
+    let detail: ((DiscoveredApp) -> String?)?
     @ViewBuilder var trailing: () -> HeaderTrailing
 
     @EnvironmentObject private var preferences: AppPreferences
@@ -12,10 +13,12 @@ struct AppGridSection<HeaderTrailing: View>: View {
     init(title: String,
          apps: [DiscoveredApp],
          emptyState: String? = nil,
+         detail: ((DiscoveredApp) -> String?)? = nil,
          @ViewBuilder trailing: @escaping () -> HeaderTrailing = { EmptyView() }) {
         self.title = title
         self.apps = apps
         self.emptyState = emptyState
+        self.detail = detail
         self.trailing = trailing
     }
 
@@ -38,7 +41,7 @@ struct AppGridSection<HeaderTrailing: View>: View {
             } else {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: preferences.gridScale.verticalSpacing) {
                     ForEach(apps, id: \.identifier) { app in
-                        AppTile(app: app)
+                        AppTile(app: app, detail: detail?(app))
                             .transition(.scale(scale: 0.96).combined(with: .opacity))
                     }
                 }

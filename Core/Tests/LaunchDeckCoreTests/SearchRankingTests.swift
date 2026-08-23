@@ -80,4 +80,44 @@ struct SearchRankingTests {
                                           favorites: favorites, recents: [], layout: [])
         #expect(ranked.first?.identifier == safari.identifier)
     }
+
+    @Test("Fuzzy search supports initials, subsequences, typos, and diacritics")
+    func fuzzyMatching() {
+        let vscode = makeApp(identifier: "com.microsoft.VSCode", name: "Visual Studio Code")
+        let keynote = makeApp(identifier: "com.apple.Keynote", name: "Keynote")
+        let resume = makeApp(identifier: "com.test.resume", name: "Résumé Builder")
+        let index = SearchIndex(apps: [vscode, keynote, resume])
+
+        #expect(index.search("vsc").first?.app.identifier == vscode.identifier)
+        #expect(index.search("vsco").first?.app.identifier == vscode.identifier)
+        #expect(index.search("keyonte").first?.app.identifier == keynote.identifier)
+        #expect(index.search("resume").first?.app.identifier == resume.identifier)
+    }
+
+    @Test("Exact and prefix matches beat secondary metadata matches")
+    func fieldPriority() {
+        let exact = makeApp(identifier: "com.test.code", name: "Code")
+        let metadata = DiscoveredApp(name: "Editor",
+                                     bundleIdentifier: "com.test.editor",
+                                     path: "/Applications/Editor.app",
+                                     category: "Code",
+                                     bundleVersion: nil,
+                                     developer: nil,
+                                     isSystemApp: false,
+                                     keywords: [])
+        #expect(SearchIndex(apps: [metadata, exact]).search("code").first?.app.identifier == exact.identifier)
+    }
+
+    @Test("Intent validation drops unknown and duplicate apps, clamps and sorts confidence")
+    func intentValidation() {
+        let results = [
+            IntentResult(appIdentifier: "known", confidence: 0.4, reason: "Secondary"),
+            IntentResult(appIdentifier: "unknown", confidence: 1.0, reason: "Invented"),
+            IntentResult(appIdentifier: "known", confidence: 0.9, reason: "Duplicate"),
+            IntentResult(appIdentifier: "best", confidence: 2.0, reason: "Best"),
+        ]
+        let validated = IntentResultValidator.validate(results, allowedIdentifiers: ["known", "best"])
+        #expect(validated.map(\.appIdentifier) == ["best", "known"])
+        #expect(validated.first?.confidence == 1)
+    }
 }

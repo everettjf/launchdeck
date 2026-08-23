@@ -13,9 +13,12 @@ final class AppState: ObservableObject {
     @Published var searchQuery: String = ""
     @Published private(set) var favorites: Set<String>
     @Published private(set) var recents: [RecentLaunch]
+    @Published private(set) var indexedItems: [SearchItem] = []
 
     let layoutController: LayoutController
     let searchController: SemanticSearchController
+    let actionController: ActionController
+    let recipeStore: RecipeStore
 
     var totalAppCount: Int { apps.count }
 
@@ -23,7 +26,18 @@ final class AppState: ObservableObject {
 
     var layout: [AppCollectionItem] { layoutController.layout }
     var isSemanticSearching: Bool { searchController.isSearching }
-    var semanticSearchResults: [DiscoveredApp] { searchController.results }
+    var semanticSearchResults: [DiscoveredApp] {
+        searchController.results.compactMap { result in
+            guard result.targetIdentifier.hasPrefix("application:") else { return nil }
+            return appsByIdentifier[String(result.targetIdentifier.dropFirst("application:".count))]
+        }
+    }
+    var intentResults: [IntentRecommendation] { searchController.results }
+    var intentSearchPhase: IntentSearchPhase { searchController.phase }
+    var intentSearchAvailability: IntentSearchAvailability { searchController.availability }
+    var pendingAction: LaunchDeckAction? { actionController.pendingAction }
+    var pendingActionPreview: ActionPreview? { actionController.pendingPreview }
+    var actionError: String? { actionController.lastError }
     var isSemanticSearchAvailable: Bool { searchController.isAvailable }
 
     private let favoritesStore: FavoritesStore
@@ -33,8 +47,12 @@ final class AppState: ObservableObject {
     private let focusPublisher = PassthroughSubject<Void, Never>()
 
     private var appsByIdentifier: [String: DiscoveredApp] = [:]
+    private var searchIndex = SearchIndex(apps: [])
+    private var unifiedSearchIndex = UnifiedSearchIndex(items: [])
+    private var searchItemsByIdentifier: [String: SearchItem] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var directoryMonitor: ApplicationDirectoryMonitor?
+    private var localIndexGeneration = 0
 
     var searchFocusPublisher: AnyPublisher<Void, Never> {
         focusPublisher.eraseToAnyPublisher()
@@ -58,8 +76,12 @@ final class AppState: ObservableObject {
 
         let layoutController = LayoutController(layoutStore: layoutStore)
         let searchController = SemanticSearchController()
+        let actionController = ActionController()
+        let recipeStore = RecipeStore()
         self.layoutController = layoutController
         self.searchController = searchController
+        self.actionController = actionController
+        self.recipeStore = recipeStore
 
         // Forward controller changes so views observing AppState stay live
         layoutController.objectWillChange
@@ -68,13 +90,38 @@ final class AppState: ObservableObject {
         searchController.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        actionController.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        recipeStore.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        recipeStore.$recipes
+            .dropFirst()
+            .sink { [weak self] recipes in self?.rebuildUnifiedIndex(recipes: recipes) }
+            .store(in: &cancellables)
 
         setupBindings()
         setupDirectoryMonitoring()
         refreshApps()
 
-        searchController.appsProvider = { [weak self] in self?.apps ?? [] }
+        searchController.candidatesProvider = { [weak self] query in
+            guard let self else { return [] }
+            let preferredFallbackIDs = self.allApps().map { "application:\($0.identifier)" }
+                + self.indexedItems.map(\.id)
+            return IntentCandidateSelector.select(query: query, index: self.unifiedSearchIndex,
+                                                  catalog: self.searchItemsByIdentifier,
+                                                  preferredFallbackIdentifiers: preferredFallbackIDs)
+        }
+        actionController.appProvider = { [weak self] identifier in
+            self?.appsByIdentifier[identifier].map { URL(fileURLWithPath: $0.path) }
+        }
+        actionController.applicationOpened = { [weak self] identifier in
+            guard let self, let app = self.appsByIdentifier[identifier] else { return }
+            self.updateRecents(with: app)
+        }
         searchController.initialize()
+        refreshLocalContent()
     }
 
     private func setupBindings() {
@@ -83,6 +130,16 @@ final class AppState: ObservableObject {
             .sink { [weak self] _ in
                 self?.refreshApps()
             }
+            .store(in: &cancellables)
+        preferences.$indexedRootPaths
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] paths in self?.refreshLocalContent(rootPaths: paths) }
+            .store(in: &cancellables)
+        preferences.$approvedShortcuts
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] shortcuts in self?.rebuildUnifiedIndex(approvedShortcuts: shortcuts) }
             .store(in: &cancellables)
     }
 
@@ -120,6 +177,8 @@ final class AppState: ObservableObject {
             apps = discovered
         }
         appsByIdentifier = Dictionary(uniqueKeysWithValues: discovered.map { ($0.identifier, $0) })
+        searchIndex = SearchIndex(apps: discovered)
+        rebuildUnifiedIndex()
         layoutController.sync(with: discovered)
     }
 
@@ -156,20 +215,7 @@ final class AppState: ObservableObject {
     // MARK: - Launching
 
     func launch(_ app: DiscoveredApp) {
-        let url = URL(fileURLWithPath: app.path)
-        let configuration = NSWorkspace.OpenConfiguration()
-
-        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { [weak self] runningApplication, error in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if let error {
-                    self.presentLaunchError(error, app: app)
-                    return
-                }
-                guard runningApplication != nil else { return }
-                self.updateRecents(with: app)
-            }
-        }
+        actionController.request(.openApplication(identifier: app.identifier, name: app.name))
     }
 
     private func presentLaunchError(_ error: Error, app: DiscoveredApp) {
@@ -181,7 +227,7 @@ final class AppState: ObservableObject {
     }
 
     func revealInFinder(_ app: DiscoveredApp) {
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.path)])
+        actionController.request(.revealApplication(identifier: app.identifier, name: app.name))
     }
 
     func copyPathToClipboard(_ app: DiscoveredApp) {
@@ -233,14 +279,110 @@ final class AppState: ObservableObject {
             return []
         }
 
-        // If using AI search, return empty (results come from semanticSearchResults)
-        if useAISearch {
-            return []
-        }
+        return localRankedResults(for: actualQuery).map(\.app)
+    }
 
-        // Otherwise, use keyword-based search
-        return SearchRanking.filter(apps, matching: actualQuery,
-                                    favorites: favorites, recents: recents, layout: layout)
+    func searchItems(matching query: String, limit: Int = 80) -> [SearchItem] {
+        unifiedSearchIndex.search(query, kindBoosts: [.application: 0.04, .project: 0.03], limit: limit).map(\.item)
+    }
+
+    func searchItem(identifier: String) -> SearchItem? { searchItemsByIdentifier[identifier] }
+
+    func perform(_ item: SearchItem) {
+        if let recommendation = intentResults.first(where: { $0.targetIdentifier == item.id }) {
+            let appName: String?
+            if case .application(let identifier, _) = item.target { appName = appsByIdentifier[identifier]?.name }
+            else { appName = nil }
+            switch IntentActionResolver.resolve(recommendation, target: item, applicationName: appName,
+                                                installedApplications: appsByIdentifier.mapValues { $0.name },
+                                                recipes: recipeStore.recipes) {
+            case .action(let action):
+                requestAction(action)
+                return
+            case .missingParameters(let missing):
+                actionController.presentError("This action needs: \(missing.joined(separator: ", ")). Refine the intent or choose a concrete target.")
+                return
+            case .unresolved:
+                actionController.presentError("The suggested action could not be resolved safely.")
+                return
+            }
+        }
+        let action: LaunchDeckAction?
+        switch item.target {
+        case .application(let identifier, _):
+            action = appsByIdentifier[identifier].map { .openApplication(identifier: identifier, name: $0.name) }
+        case .file(let path): action = .openFile(path: path, applicationIdentifier: nil, applicationName: nil)
+        case .folder(let path), .project(let path): action = .openProject(path: path)
+        case .registeredAction(let identifier):
+            if identifier == "open.terminal" {
+                action = .openTerminal(directory: FileManager.default.homeDirectoryForCurrentUser.path)
+            } else {
+                action = nil
+                actionController.presentError("“\(identifier)” needs a concrete target. Use intent search or select a file, project, app, or recipe.")
+            }
+        case .systemSetting(let identifier):
+            action = SystemSettingsDestination(rawValue: identifier).map { .openSystemSettings(destination: $0) }
+        case .shortcut(let name): action = .runShortcut(name: name)
+        case .recipe(let identifier):
+            action = recipeStore.recipes.first(where: { $0.id == identifier }).map { .runRecipe(identifier: $0.id, name: $0.name, steps: $0.steps) }
+        }
+        if let action { requestAction(action) }
+    }
+
+    func refreshLocalContent(rootPaths: [String]? = nil) {
+        localIndexGeneration += 1
+        let requestGeneration = localIndexGeneration
+        let roots = (rootPaths ?? preferences.indexedRootPaths).map(URL.init(fileURLWithPath:))
+        let recentURLs = NSDocumentController.shared.recentDocumentURLs
+        Task.detached(priority: .utility) { [weak self] in
+            let items = LocalContentIndexer().index(configuration: .init(roots: roots), recentURLs: recentURLs)
+            await MainActor.run {
+                guard let self, requestGeneration == self.localIndexGeneration else { return }
+                self.indexedItems = items
+                self.rebuildUnifiedIndex()
+            }
+        }
+    }
+
+    func addIndexedRoot(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        guard !preferences.indexedRootPaths.contains(path) else { return }
+        preferences.indexedRootPaths.append(path)
+    }
+
+    func removeIndexedRoot(_ path: String) { preferences.indexedRootPaths.removeAll { $0 == path } }
+
+    func intentReason(for app: DiscoveredApp) -> String? {
+        intentResults.first { $0.targetIdentifier == "application:\(app.identifier)" }?.reason
+    }
+
+    func intentDetail(for item: SearchItem) -> String? {
+        guard let result = intentResults.first(where: { $0.targetIdentifier == item.id }) else { return nil }
+        let percent = Int((result.confidence * 100).rounded())
+        let actionName = ActionRegistry.shared.descriptors.first { $0.id == result.actionIdentifier }?.title
+            ?? result.actionIdentifier
+        let appName: String?
+        if case .application(let identifier, _) = item.target { appName = appsByIdentifier[identifier]?.name }
+        else { appName = nil }
+        let resolution = IntentActionResolver.resolve(result, target: item, applicationName: appName,
+                                                      installedApplications: appsByIdentifier.mapValues { $0.name },
+                                                      recipes: recipeStore.recipes)
+        let missing: String
+        if case .missingParameters(let values) = resolution { missing = " · Needs \(values.joined(separator: ", "))" }
+        else if case .unresolved = resolution { missing = " · Unresolved" }
+        else { missing = "" }
+        return "\(result.reason) · \(percent)% · \(actionName)\(missing)"
+    }
+
+    func requestAction(_ action: LaunchDeckAction) {
+        actionController.request(action, approvedShortcuts: Set(preferences.approvedShortcuts))
+    }
+    func confirmPendingAction() { actionController.confirmPending() }
+    func cancelPendingAction() { actionController.cancelPending() }
+    func dismissActionError() { actionController.dismissError() }
+    func clearPrivateHistory() {
+        clearRecents()
+        actionController.clearHistory()
     }
 
     // MARK: - App queries
@@ -359,6 +501,19 @@ final class AppState: ObservableObject {
 
     private func orderedIdentifiers() -> [String] {
         layoutController.orderedIdentifiers
+    }
+
+    private func localRankedResults(for query: String, limit: Int? = nil) -> [(app: DiscoveredApp, score: Double)] {
+        searchIndex.search(query, favorites: favorites, recents: recents,
+                           layout: layout, limit: limit)
+    }
+
+    private func rebuildUnifiedIndex(approvedShortcuts: [String]? = nil, recipes: [Recipe]? = nil) {
+        let items = SearchCatalogBuilder.build(apps: apps, indexedItems: indexedItems,
+                                               approvedShortcuts: approvedShortcuts ?? preferences.approvedShortcuts,
+                                               recipes: recipes ?? recipeStore.recipes)
+        searchItemsByIdentifier = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        unifiedSearchIndex = UnifiedSearchIndex(items: items)
     }
 
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {

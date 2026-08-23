@@ -1,7 +1,7 @@
 name: LaunchDeck
 options:
   deploymentTarget:
-    macOS: "26.0"
+    macOS: "15.0"
 
 packages:
   LaunchDeckCore:
@@ -18,18 +18,17 @@ targets:
         product: LaunchDeckCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.xnu.startmyapp
+        PRODUCT_BUNDLE_IDENTIFIER: com.everettjf.launchdeck
         PRODUCT_NAME: "$(TARGET_NAME)"
         MARKETING_VERSION: "1.5"
         CURRENT_PROJECT_VERSION: "1500"
         SWIFT_VERSION: "5.0"
         DEVELOPMENT_TEAM: YPV49M8592
         CODE_SIGN_STYLE: Automatic
-        ENABLE_APP_SANDBOX: YES
+        ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_INCOMING_NETWORK_CONNECTIONS: NO
         ENABLE_OUTGOING_NETWORK_CONNECTIONS: NO
-        ENABLE_USER_SELECTED_FILES: readwrite
         ENABLE_PREVIEWS: YES
         ENABLE_RESOURCE_ACCESS_AUDIO_INPUT: NO
         ENABLE_RESOURCE_ACCESS_BLUETOOTH: NO
@@ -57,6 +56,22 @@ targets:
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+      configs:
+        Release:
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+
+  LaunchDeckTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: LaunchDeckTests
+    dependencies:
+      - target: LaunchDeck
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
 
 # Explicit scheme: the app target shares the project name "LaunchDeck", which
 # makes XcodeGen's auto-scheme generation skip it.
@@ -67,6 +82,10 @@ schemes:
         LaunchDeck: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - LaunchDeckTests
     profile:
       config: Release
     analyze:

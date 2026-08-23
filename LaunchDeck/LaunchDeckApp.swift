@@ -60,6 +60,7 @@ struct LaunchDeckApp: App {
         }
         Settings {
             SettingsView()
+                .environmentObject(appState)
                 .environmentObject(preferences)
         }
     }

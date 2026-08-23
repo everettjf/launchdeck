@@ -2,114 +2,86 @@ import Combine
 import Foundation
 import LaunchDeckCore
 
-/// Orchestrates AI semantic search (the `/` query prefix): debounce, cancellation,
-/// and result state. The actual model calls live in SemanticSearchService.
 @MainActor
 final class SemanticSearchController: ObservableObject {
-    @Published private(set) var results: [DiscoveredApp] = []
-    @Published private(set) var isSearching: Bool = false
-    private(set) var isAvailable: Bool = false
+    @Published private(set) var results: [IntentRecommendation] = []
+    @Published private(set) var phase: IntentSearchPhase = .idle
+    @Published private(set) var availability: IntentSearchAvailability = .checking
+    var candidatesProvider: (String) -> [SearchItemCandidate] = { _ in [] }
 
-    /// Supplies the current app catalog when a debounced search fires.
-    var appsProvider: () -> [DiscoveredApp] = { [] }
-
-    private var service: SemanticSearchService?
+    private let searcher: any IntentSearching
+    private let debounce: Duration
+    private let timeout: Duration
     private var searchTask: Task<Void, Never>?
-    private var debounceTimer: Timer?
-    private var currentRawQuery: String = ""
+    private var generation = 0
+
+    init(searcher: (any IntentSearching)? = nil,
+         debounce: Duration = .milliseconds(350),
+         timeout: Duration = .seconds(6)) {
+        self.searcher = searcher ?? IntentSearcherFactory.make()
+        self.debounce = debounce
+        self.timeout = timeout
+    }
+
+    var isAvailable: Bool {
+        if case .available = availability { return true }
+        return false
+    }
+    var isSearching: Bool { phase == .waiting || phase == .searching }
 
     func initialize() {
-        Task {
-            let service = await SemanticSearchService()
-            self.service = service
-            self.isAvailable = true
-            objectWillChange.send()
-        }
+        Task { availability = await searcher.availability() }
     }
 
-    /// Called when the search query changes.
-    func handleQueryChange(_ query: String) {
-        currentRawQuery = query
+    func handleQueryChange(_ rawQuery: String) {
+        generation += 1
+        let requestGeneration = generation
+        searchTask?.cancel()
+        guard rawQuery.hasPrefix("/") else { reset(); return }
+        let query = String(rawQuery.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { reset(); return }
+        guard isAvailable else { results = []; phase = .idle; return }
 
-        // Cancel any pending debounce timer
-        debounceTimer?.invalidate()
-        debounceTimer = nil
-
-        // 1. If search is empty, clear AI results
-        guard !query.isEmpty else {
-            clear()
-            return
-        }
-
-        // 2. Check if using AI search (starts with /)
-        let useAISearch = query.hasPrefix("/")
-        let actualQuery = useAISearch ? String(query.dropFirst()) : query
-
-        // 3. If not using AI search, clear AI results
-        if !useAISearch {
-            clear()
-            return
-        }
-
-        // 4. If only "/" is entered (no actual query), clear AI results
-        if actualQuery.isEmpty {
-            clear()
-            return
-        }
-
-        // 5. If using AI search (/xxx), trigger semantic search with debounce
-        if isAvailable, !actualQuery.trimmingCharacters(in: .whitespaces).isEmpty {
-            // Debounce: wait 2 seconds before triggering AI search
-            debounceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-                guard let self else { return }
-                Task { @MainActor in
-                    self.trigger(query: actualQuery)
+        let debounce = self.debounce
+        let timeout = self.timeout
+        phase = .waiting
+        searchTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: debounce)
+                guard !Task.isCancelled, let self, requestGeneration == self.generation else { return }
+                self.phase = .searching
+                let candidates = self.candidatesProvider(query)
+                let found = try await withThrowingTaskGroup(of: [IntentRecommendation].self) { group in
+                    group.addTask { try await self.searcher.search(query: query, candidates: candidates) }
+                    group.addTask {
+                        try await Task.sleep(for: timeout)
+                        throw IntentSearchTimeout()
+                    }
+                    let first = try await group.next() ?? []
+                    group.cancelAll()
+                    return first
                 }
-            }
-        }
-    }
-
-    private func clear() {
-        // Cancel any debounce timer
-        debounceTimer?.invalidate()
-        debounceTimer = nil
-
-        // Cancel any ongoing search task
-        searchTask?.cancel()
-
-        // Clear the searching state
-        isSearching = false
-
-        // Clear results
-        if !results.isEmpty {
-            results = []
-        }
-    }
-
-    private func trigger(query: String) {
-        // Cancel any ongoing search
-        searchTask?.cancel()
-
-        isSearching = true
-
-        searchTask = Task { @MainActor in
-            guard let service else {
-                isSearching = false
+                guard !Task.isCancelled, requestGeneration == self.generation else { return }
+                self.results = found
+                self.phase = .completed
+            } catch is CancellationError {
                 return
+            } catch {
+                guard requestGeneration == self?.generation else { return }
+                self?.results = []
+                self?.phase = .failed(error.localizedDescription)
             }
-
-            let results = await service.searchApps(appsProvider(), query: query)
-
-            // Check if search query hasn't changed
-            let currentQuery = currentRawQuery.hasPrefix("/")
-                ? String(currentRawQuery.dropFirst())
-                : currentRawQuery
-
-            if currentQuery == query && !Task.isCancelled {
-                self.results = results.map { $0.app }
-            }
-
-            isSearching = false
         }
     }
+
+    func reset() {
+        searchTask?.cancel()
+        searchTask = nil
+        if !results.isEmpty { results = [] }
+        phase = .idle
+    }
+}
+
+private struct IntentSearchTimeout: LocalizedError {
+    var errorDescription: String? { "Intent search timed out. Local results are still available." }
 }

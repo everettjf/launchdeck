@@ -2,11 +2,13 @@
 
 Repository: <https://github.com/everettjf/launchdeck>
 
-[Website](https://xnu.app/launchdeck/) · [Mac App Store](https://apps.apple.com/us/app/startmyapp-fast-app-launch/id6753610893) · [Discord](https://discord.gg/eGzEaP6TzR)
+[Website](https://xnu.app/launchdeck/) · [Discord](https://discord.gg/eGzEaP6TzR)
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eGzEaP6TzR)
 
 A modern macOS app launcher focused on fast discovery, organization, and launch.
+
+LaunchDeck is configured for direct Developer ID distribution rather than the Mac App Store.
 
 ## Screenshot
 
@@ -16,15 +18,18 @@ A modern macOS app launcher focused on fast discovery, organization, and launch.
 
 - Auto-discover system and user apps and keep layout in sync
 - Custom grid layout: drag to reorder, drag to create folders, favorite apps
-- Search-first: keyword filtering + optional AI semantic search (type `/`)
+- Unified local search across apps, files, folders, projects, settings, actions, approved Shortcuts, and recipes
+- Optional structured intent search (type `/`) that selects only validated local targets and registered actions
+- Configurable local document/project roots with dependency, build, hidden, and sensitive-directory exclusions
+- Deterministic local recipes with create/edit/import/export and step-by-step action previews
 - Recently launched and most-launched sorting, with hidden apps support
 - Menu bar entry + global hotkey to summon instantly
 
 ## Requirements
 
-- macOS 26.0+
+- macOS 15.0+
 - Xcode 26.0+ and XcodeGen (local build)
-- AI semantic search requires Apple Intelligence-capable hardware, enabled in System Settings, and the model available
+- Intent search requires macOS 26, Apple Intelligence-capable hardware, and an available on-device model
 
 ## Build Locally
 
@@ -36,8 +41,9 @@ Run the core logic tests with `cd Core && swift test`.
 
 ## Usage
 
-- Type to filter by keyword
-- Start with `/` to enable AI semantic search (e.g. `/image editor`)
+- Type to search every indexed object without waiting for AI
+- Start with `/` to describe an intent (e.g. `/edit an image`); local results remain visible while AI ranks structured target/action candidates
+- Select an elevated action to review its exact target, ordered steps, permissions, and risk before confirming
 - Drag apps to reorder, drag onto apps to create folders
 - Adjust sorting, grid size, system apps visibility, and hotkey in Settings
 
@@ -48,6 +54,18 @@ Run the core logic tests with `cd Core && swift test`.
 - Grid density (compact / comfortable / spacious)
 - Menu bar icon and global hotkey
 - Apple Intelligence availability status
+- Explicitly approved Shortcuts with confirmation before every run
+- Search roots for local files, folders, Git repositories, and Xcode projects
+- Local recipes assembled from apps, projects, Terminal locations, and approved Shortcuts
+- Local launch/action history reset
+
+## Privacy and action safety
+
+Application indexes, organization, recipes, launch history, and the latest 50 action records stay on the Mac. Settings includes a single reset for launch and action history. LaunchDeck actions are typed and validated: AI output cannot invent target or action identifiers, file/directory types are checked before execution, system settings use fixed destinations, and Shortcuts—including those inside imported recipes—must be explicitly approved. Elevated actions show a full preview and require confirmation.
+
+## Performance benchmark
+
+Run `cd Core && swift run -c release application-index-benchmark --apps 5000`. The command emits JSON covering cold discovery, incremental refresh, app and unified-index construction, intent-candidate retrieval, and fuzzy-search p50/p95 latency.
 
 ## Project Structure
 

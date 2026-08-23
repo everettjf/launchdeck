@@ -4,6 +4,7 @@ import LaunchDeckCore
 
 struct AppTile: View {
     let app: DiscoveredApp
+    var detail: String? = nil
 
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var preferences: AppPreferences
@@ -35,6 +36,14 @@ struct AppTile: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: titleHeight, alignment: .top)
                         .help(app.name)
+                    if let detail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 .padding(.vertical, 14)
                 .padding(.horizontal, 12)
@@ -179,6 +188,7 @@ struct AppTile: View {
     }
 
     private var titleHeight: CGFloat {
+        if detail != nil { return 28 }
         switch preferences.gridScale {
         case .compact: return 28
         case .comfortable: return 32
