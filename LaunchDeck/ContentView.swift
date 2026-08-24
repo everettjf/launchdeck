@@ -19,6 +19,8 @@ struct ContentView: View {
     @State private var selectedKinds = Set(SearchItemKind.allCases)
     @State private var selectedObjectIDs = Set<String>()
     @State private var objectActionRequest: ObjectActionRequest?
+    @State private var isLibraryExpanded = false
+    @State private var isCommandPressed = false
 
     private var unifiedResults: [SearchItem] {
         let query = searchText.hasPrefix("/") ? String(searchText.dropFirst()) : searchText
@@ -114,6 +116,7 @@ struct ContentView: View {
             objectActionRequest = ObjectActionRequest(sources: objects)
             appState.clearInstantSend()
         }
+        .background(ModifierKeyObserver(isCommandPressed: $isCommandPressed))
     }
 
     private var mainContent: some View {
@@ -124,25 +127,29 @@ struct ContentView: View {
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 36) {
                     if searchText.isEmpty {
-                        if !favoriteApps.isEmpty {
-                            AppGridSection(title: "Favorites",
-                                            apps: favoriteApps)
-                        }
-                        if preferences.showRecentApps && !recentApps.isEmpty {
-                            AppGridSection(title: "Recently Launched",
-                                           apps: recentApps,
-                                           trailing: {
-                                Button("Clear") {
-                                    withAnimation(.easeInOut(duration: 0.25)) {
-                                        appState.clearRecents()
+                        if isLibraryExpanded {
+                            if !favoriteApps.isEmpty {
+                                AppGridSection(title: "Favorites",
+                                               apps: favoriteApps)
+                            }
+                            if preferences.showRecentApps && !recentApps.isEmpty {
+                                AppGridSection(title: "Recently Launched",
+                                               apps: recentApps,
+                                               trailing: {
+                                    Button("Clear") {
+                                        withAnimation(.easeInOut(duration: 0.25)) {
+                                            appState.clearRecents()
+                                        }
                                     }
-                                }
-                                .buttonStyle(.borderless)
-                                .foregroundStyle(.secondary)
-                                .help("Clear recently launched apps")
-                            })
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(.secondary)
+                                    .help("Clear recently launched apps")
+                                })
+                            }
+                            allApplicationsSection
+                        } else {
+                            CompactLauncherHome(onShowLibrary: showLibrary)
                         }
-                        allApplicationsSection
                     } else {
                         if unifiedResults.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
@@ -159,6 +166,7 @@ struct ContentView: View {
                                                      selectedIdentifier: searchSelection.selectedIdentifier,
                                                      includedIdentifiers: selectedObjectIDs,
                                                      reason: appState.intentDetail,
+                                                     isCommandPressed: isCommandPressed,
                                                      onToggleIncluded: toggleObjectSelection,
                                                      onRun: runSearchItem) {
                                 HStack(spacing: 8) {
@@ -197,10 +205,10 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 12) {
             searchField
-                .frame(maxWidth: 500)
+                .frame(maxWidth: 640)
             Spacer()
 
-            if searchText.isEmpty {
+            if searchText.isEmpty, isLibraryExpanded {
                 Text("All Applications")
                     .font(.title3.weight(.semibold))
                 Text("\(appState.totalAppCount)")
@@ -265,6 +273,19 @@ struct ContentView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .buttonStyle(.bordered)
+            }
+
+            if searchText.isEmpty {
+                Button {
+                    withAnimation(.snappy(duration: 0.25)) {
+                        isLibraryExpanded.toggle()
+                    }
+                } label: {
+                    Label(isLibraryExpanded ? "Hide Apps" : "Show Apps",
+                          systemImage: isLibraryExpanded ? "rectangle.compress.vertical" : "square.grid.2x2")
+                }
+                .buttonStyle(.bordered)
+                .help(isLibraryExpanded ? "Return to the compact launcher" : "Show the full application library")
             }
 
             Button {
@@ -352,6 +373,14 @@ struct ContentView: View {
                     }
                     return .handled
                 }
+                .onKeyPress(phases: .down) { press in
+                    guard press.modifiers.contains(.command),
+                          let character = press.characters.first,
+                          let index = commandShortcutIndex(for: character),
+                          unifiedResults.indices.contains(index) else { return .ignored }
+                    runSearchItem(unifiedResults[index])
+                    return .handled
+                }
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
@@ -431,6 +460,20 @@ struct ContentView: View {
         appState.perform(item)
     }
 
+    private func commandShortcutIndex(for character: Character) -> Int? {
+        switch character {
+        case "1"..."9": return character.wholeNumberValue.map { $0 - 1 }
+        case "0": return 9
+        default: return nil
+        }
+    }
+
+    private func showLibrary() {
+        withAnimation(.snappy(duration: 0.25)) {
+            isLibraryExpanded = true
+        }
+    }
+
     private func toggleObjectSelection(_ item: SearchItem) {
         guard LaunchObject(searchItem: item) != nil else { return }
         if selectedObjectIDs.contains(item.id) { selectedObjectIDs.remove(item.id) }
@@ -479,6 +522,7 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
     let selectedIdentifier: String?
     let includedIdentifiers: Set<String>
     let reason: (SearchItem) -> String?
+    let isCommandPressed: Bool
     let onToggleIncluded: (SearchItem) -> Void
     let onRun: (SearchItem) -> Void
     @ViewBuilder let trailing: () -> Trailing
@@ -487,11 +531,12 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack { Text("Search").font(.title2.weight(.semibold)); Spacer(); trailing() }
             LazyVStack(spacing: 6) {
-                ForEach(items) { item in
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     SearchResultRow(item: item,
                                     isSelected: item.id == selectedIdentifier,
                                     isIncluded: includedIdentifiers.contains(item.id),
-                                    detail: reason(item) ?? item.subtitle ?? item.kind.rawValue.capitalized) {
+                                    detail: reason(item) ?? item.subtitle ?? item.kind.displayName,
+                                    commandShortcut: isCommandPressed ? commandShortcut(for: index) : nil) {
                         onToggleIncluded(item)
                     } onRun: {
                         onRun(item)
@@ -501,6 +546,38 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
         }
     }
 
+    private func commandShortcut(for index: Int) -> String? {
+        switch index {
+        case 0...8: return "⌘\(index + 1)"
+        case 9: return "⌘0"
+        default: return nil
+        }
+    }
+
+}
+
+private struct CompactLauncherHome: View {
+    let onShowLibrary: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "command.square")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("Type to launch anything")
+                .font(.title3.weight(.semibold))
+            Text("Apps, files, commands, shortcuts, recipes, and more")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button("Browse all applications", systemImage: "square.grid.2x2", action: onShowLibrary)
+                .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 72)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Compact launcher")
+    }
 }
 
 private struct SearchKindFilterBar: View {
