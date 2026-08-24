@@ -96,7 +96,6 @@ final class AppPreferences: ObservableObject {
     @Published var gridScale: GridScale
     @Published var sortOption: SortOption
     @Published var showRecentApps: Bool
-    @Published var showMenuBarIcon: Bool
     @Published var isGlobalShortcutEnabled: Bool
     @Published var globalShortcut: KeyboardShortcutPreference
     @Published var hiddenApps: Set<String>
@@ -117,7 +116,6 @@ final class AppPreferences: ObservableObject {
         static let gridScale = "preferences.gridScale"
         static let sortOption = "preferences.sortOption"
         static let showRecentApps = "preferences.showRecentApps"
-        static let showMenuBarIcon = "preferences.showMenuBarIcon"
         static let globalShortcutEnabled = "preferences.globalShortcutEnabled"
         static let globalShortcut = "preferences.globalShortcut"
         static let hiddenApps = "preferences.hiddenApps"
@@ -149,11 +147,6 @@ final class AppPreferences: ObservableObject {
             defaults.set(true, forKey: Keys.showRecentApps)
         }
         showRecentApps = defaults.object(forKey: Keys.showRecentApps).map { _ in defaults.bool(forKey: Keys.showRecentApps) } ?? true
-
-        if defaults.object(forKey: Keys.showMenuBarIcon) == nil {
-            defaults.set(true, forKey: Keys.showMenuBarIcon)
-        }
-        showMenuBarIcon = defaults.bool(forKey: Keys.showMenuBarIcon)
 
         if defaults.object(forKey: Keys.globalShortcutEnabled) == nil {
             defaults.set(true, forKey: Keys.globalShortcutEnabled)
@@ -230,13 +223,6 @@ final class AppPreferences: ObservableObject {
             .dropFirst()
             .sink { [weak self] value in
                 self?.defaults.set(value, forKey: Keys.showRecentApps)
-            }
-            .store(in: &cancellables)
-
-        $showMenuBarIcon
-            .dropFirst()
-            .sink { [weak self] value in
-                self?.defaults.set(value, forKey: Keys.showMenuBarIcon)
             }
             .store(in: &cancellables)
 

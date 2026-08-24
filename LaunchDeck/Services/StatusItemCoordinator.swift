@@ -13,17 +13,10 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
         self.appState = appState
         super.init()
         setupBindings()
-        updateStatusItemVisibility(show: preferences.showMenuBarIcon)
+        createStatusItem()
     }
 
     private func setupBindings() {
-        preferences.$showMenuBarIcon
-            .receive(on: RunLoop.main)
-            .sink { [weak self] show in
-                self?.updateStatusItemVisibility(show: show)
-            }
-            .store(in: &cancellables)
-
         Publishers.Merge3(
             preferences.$showRecentApps.map { _ in () },
             preferences.$isGlobalShortcutEnabled.map { _ in () },
@@ -36,21 +29,8 @@ final class StatusItemCoordinator: NSObject, ObservableObject {
         .store(in: &cancellables)
     }
 
-    private func updateStatusItemVisibility(show: Bool) {
-        if show {
-            if statusItem == nil {
-                createStatusItem()
-            }
-            refreshMenu()
-        } else {
-            if let statusItem {
-                NSStatusBar.system.removeStatusItem(statusItem)
-            }
-            statusItem = nil
-        }
-    }
-
     private func createStatusItem() {
+        guard statusItem == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             let icon = NSApp.applicationIconImage.copy() as? NSImage

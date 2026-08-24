@@ -32,7 +32,7 @@ final class ShortcutCoordinator: ObservableObject {
                 Task { @MainActor in
                     InstantSendService.capture { objects in
                         appState.receiveInstantSend(objects)
-                        WindowManager.shared.showMainWindow {
+                        WindowManager.shared.toggleMainWindow {
                             Task { @MainActor in appState.postSearchFocusRequest() }
                         }
                     }

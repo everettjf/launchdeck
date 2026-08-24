@@ -35,7 +35,6 @@ struct SettingsView: View {
             } header: { Text("Appearance") }
 
             Section {
-                Toggle("Show Menu Bar Icon", isOn: $preferences.showMenuBarIcon)
                 Toggle("Enable Global Shortcut", isOn: $preferences.isGlobalShortcutEnabled)
                 if preferences.isGlobalShortcutEnabled {
                     ShortcutRecorderView(shortcut: $preferences.globalShortcut)
