@@ -84,7 +84,7 @@ private struct SearchResultIcon: View {
 
     var body: some View {
         Group {
-            if case .application(_, let path) = item.target {
+            if case .application = item.target {
                 if let applicationIcon {
                     Image(nsImage: applicationIcon)
                         .resizable()

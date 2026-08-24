@@ -44,9 +44,5 @@ struct ModifierKeyObserver: NSViewRepresentable {
             monitor = nil
             isCommandPressed.wrappedValue = false
         }
-
-        deinit {
-            stopMonitoring()
-        }
     }
 }
