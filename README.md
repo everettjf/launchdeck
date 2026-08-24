@@ -12,7 +12,7 @@ Repository: <https://github.com/everettjf/launchdeck>
 
 A private, local-first macOS launcher that combines Spotlight-style file discovery, Raycast-style actions, and LaunchBar-style workflows in one instant searchable index—with optional on-device intent search.
 
-LaunchDeck is configured for direct Developer ID distribution rather than the Mac App Store.
+LaunchDeck is distributed directly with Developer ID signing through Homebrew and GitHub Releases. It no longer supports or ships through the Mac App Store. Its bundle identifier is `com.everettjf.launchdeck`; the former `com.xnu.startmyapp` identity is retired.
 
 ## Screenshot
 

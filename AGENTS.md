@@ -4,6 +4,13 @@
 
 This document tracks how LaunchDeck integrates Apple Foundation Models (Apple Intelligence), with a focus on semantic search and future extensions.
 
+## Product Identity And Distribution
+
+- The product name and app target are **LaunchDeck**.
+- The bundle identifier is `com.everettjf.launchdeck`.
+- The former `com.xnu.startmyapp` bundle identifier is retired and must not be restored for App Store continuity.
+- LaunchDeck is distributed with Developer ID signing through Homebrew and GitHub Releases. Do not add or maintain a Mac App Store release path.
+
 ## Core Capabilities
 
 - Text generation and understanding
