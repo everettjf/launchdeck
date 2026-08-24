@@ -190,9 +190,9 @@ enum ActionPolicy {
                 if case .runShortcut(let name) = $0.operation { return !approvedShortcuts.contains(name) }
                 return false
             }) { return "Every Shortcut used by this recipe must be approved in LaunchDeck Settings." }
-            return steps.compactMap {
-                guard RecipeRunner.conditionMatches($0.condition) else { return nil }
-                return validate($0.action, approvedShortcuts: approvedShortcuts)
+            return steps.compactMap { step -> String? in
+                guard RecipeRunner.conditionMatches(step.condition) else { return nil }
+                return validate(step.action, approvedShortcuts: approvedShortcuts)
             }.first
         case .openFile(let path, _, _):
             var isDirectory: ObjCBool = false

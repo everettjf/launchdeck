@@ -18,7 +18,8 @@ binary="$app_path/Contents/MacOS/LaunchDeck"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == "com.everettjf.launchdeck" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$plist")" == "launchdeck" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$plist")" == "false" ]]
-lipo -verify_arch arm64 "$binary"
-lipo -verify_arch x86_64 "$binary"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$plist")" == "true" ]]
+lipo "$binary" -verify_arch arm64
+lipo "$binary" -verify_arch x86_64
 
 echo "release validation: metadata and universal architectures passed"
