@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct LaunchDeckApp: App {
+    @NSApplicationDelegateAdaptor(LaunchDeckAppDelegate.self) private var appDelegate
     @StateObject private var preferences: AppPreferences
     @StateObject private var appState: AppState
     @StateObject private var shortcutCoordinator: ShortcutCoordinator
@@ -25,8 +26,12 @@ struct LaunchDeckApp: App {
                 .background(WindowAccessor())
                 .environmentObject(appState)
                 .environmentObject(preferences)
-                .frame(minWidth: 720, minHeight: 520)
+                .frame(minWidth: 620, idealWidth: 700, minHeight: 320, idealHeight: 400)
         }
+        .defaultSize(width: 700, height: 400)
+        .defaultPosition(.center)
+        .windowResizability(.contentMinSize)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button(String(format: NSLocalizedString("About %@", comment: "About menu title"), Bundle.main.appDisplayName)) {
@@ -106,6 +111,12 @@ struct LaunchDeckApp: App {
         if let url = URL(string: "mailto:xnuapp@gmail.com?subject=\(encodedSubject)&body=\(encodedBody)") {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+final class LaunchDeckAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 }
 

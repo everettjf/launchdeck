@@ -24,16 +24,16 @@ struct AppTile: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Button(action: { appState.launch(app) }) {
-                VStack(spacing: 8) {
+                VStack(spacing: 7) {
                     AppIcon(image: icon, size: preferences.gridScale.iconSize)
                     Text(app.name)
                         .font(.system(size: preferences.gridScale.labelFontSize, weight: .semibold))
                         .foregroundStyle(.primary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 2)
                         .frame(maxWidth: .infinity)
-                        .frame(height: titleHeight, alignment: .top)
+                        .frame(height: titleHeight)
                         .help(app.name)
                     if let detail {
                         Text(detail)
@@ -44,11 +44,11 @@ struct AppTile: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .padding(.vertical, 14)
-                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 8)
                 .frame(width: tileWidth)
                 .background(tileBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowOffset)
             }
             .buttonStyle(.plain)
@@ -110,10 +110,10 @@ struct AppTile: View {
     }
 
     private var tileBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
             .fill(backgroundFill)
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: borderWidth)
             )
     }
@@ -149,9 +149,9 @@ struct AppTile: View {
         if isReorderTarget { return Color.accentColor.opacity(0.75) }
 
         if colorScheme == .dark {
-            return Color.white.opacity(isHovering ? 0.35 : 0.12)
+            return Color.white.opacity(isHovering ? 0.22 : 0)
         } else {
-            return Color.black.opacity(isHovering ? 0.20 : 0.08)
+            return Color.black.opacity(isHovering ? 0.12 : 0)
         }
     }
 
@@ -170,9 +170,9 @@ struct AppTile: View {
         }
 
         if colorScheme == .dark {
-            return Color.white.opacity(isHovering ? 0.18 : 0.1)
+            return Color.white.opacity(isHovering ? 0.12 : 0)
         } else {
-            return Color.black.opacity(isHovering ? 0.06 : 0.03)
+            return Color.black.opacity(isHovering ? 0.06 : 0)
         }
     }
 
@@ -185,11 +185,7 @@ struct AppTile: View {
 
     private var titleHeight: CGFloat {
         if detail != nil { return 28 }
-        switch preferences.gridScale {
-        case .compact: return 28
-        case .comfortable: return 32
-        case .spacious: return 38
-        }
+        return 18
     }
 
     private func loadIcon() {
