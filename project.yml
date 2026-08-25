@@ -34,8 +34,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.everettjf.launchdeck
         PRODUCT_NAME: "$(TARGET_NAME)"
-        MARKETING_VERSION: "2.0.5"
-        CURRENT_PROJECT_VERSION: "2005"
+        MARKETING_VERSION: "2.0.6"
+        CURRENT_PROJECT_VERSION: "2006"
         SWIFT_VERSION: "5.0"
         DEVELOPMENT_TEAM: YPV49M8592
         CODE_SIGN_STYLE: Automatic
