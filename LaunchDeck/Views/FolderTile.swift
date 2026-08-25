@@ -44,7 +44,7 @@ struct FolderTile: View {
             Button {
                 isOpen.toggle()
             } label: {
-                VStack(spacing: 10) {
+                VStack(spacing: 7) {
                     FolderPreviewGrid(appIdentifiers: folder.appIdentifiers,
                                        iconSize: iconSize * 0.78)
                         .frame(width: iconSize + 12, height: iconSize + 12)
@@ -64,10 +64,11 @@ struct FolderTile: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .padding(16)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 8)
                 .frame(width: tileWidth)
                 .background(tileBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowOffset)
             }
             .buttonStyle(.plain)
@@ -108,10 +109,10 @@ struct FolderTile: View {
     }
 
     private var tileBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
             .fill(backgroundFill)
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: borderWidth)
             )
     }
@@ -141,7 +142,7 @@ struct FolderTile: View {
     private var borderColor: Color {
         if isDropTarget { return Color.accentColor }
         if isReorderTarget { return Color.accentColor.opacity(0.75) }
-        return Color.white.opacity(isHovering ? 0.35 : 0.12)
+        return Color.white.opacity(isHovering ? 0.22 : 0)
     }
 
     private var borderWidth: CGFloat {
@@ -157,7 +158,7 @@ struct FolderTile: View {
         if isReorderTarget {
             return Color.accentColor.opacity(0.18)
         }
-        return Color.white.opacity(isHovering ? 0.18 : 0.1)
+        return Color.white.opacity(isHovering ? 0.12 : 0)
     }
 
     private var scaleFactor: CGFloat {

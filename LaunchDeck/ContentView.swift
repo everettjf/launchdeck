@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import SwiftUI
 import LaunchDeckCore
@@ -124,44 +125,26 @@ struct ContentView: View {
             header
             Divider()
                 .opacity(0.25)
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 36) {
-                    if searchText.isEmpty {
-                        if isLibraryExpanded {
-                            if !favoriteApps.isEmpty {
-                                AppGridSection(title: "Favorites",
-                                               apps: favoriteApps)
-                            }
-                            if preferences.showRecentApps && !recentApps.isEmpty {
-                                AppGridSection(title: "Recently Launched",
-                                               apps: recentApps,
-                                               trailing: {
-                                    Button("Clear") {
-                                        withAnimation(.easeInOut(duration: 0.25)) {
-                                            appState.clearRecents()
-                                        }
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .foregroundStyle(.secondary)
-                                    .help("Clear recently launched apps")
-                                })
-                            }
-                            allApplicationsSection
+            if searchText.isEmpty, !isLibraryExpanded {
+                CompactLauncherHome(
+                    recentApps: Array(recentApps.prefix(5)),
+                    onLaunch: appState.launch,
+                    onShowLibrary: showLibrary,
+                    onInstantSend: captureInstantSend,
+                    onOpenRecipeStudio: { openWindow(id: "recipe-studio") }
+                )
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 28) {
+                        if searchText.isEmpty {
+                            libraryContent
+                        } else if unifiedResults.isEmpty {
+                            ContentUnavailableView("No Results",
+                                                   systemImage: "magnifyingglass",
+                                                   description: Text(noResultsMessage))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 36)
                         } else {
-                            CompactLauncherHome(onShowLibrary: showLibrary)
-                        }
-                    } else {
-                        if unifiedResults.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("No results")
-                                    .font(.title3.weight(.semibold))
-                                Text(noResultsMessage)
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.top, 32)
-                        } else {
-                            SearchKindFilterBar(selectedKinds: $selectedKinds)
                             UnifiedSearchResultsView(items: unifiedResults,
                                                      selectedIdentifier: searchSelection.selectedIdentifier,
                                                      includedIdentifiers: selectedObjectIDs,
@@ -169,23 +152,15 @@ struct ContentView: View {
                                                      isCommandPressed: isCommandPressed,
                                                      onToggleIncluded: toggleObjectSelection,
                                                      onRun: runSearchItem) {
-                                HStack(spacing: 8) {
-                                    if appState.isSemanticSearching {
-                                        ProgressView().controlSize(.small)
-                                        Text("Understanding intent…")
-                                    } else {
-                                        Text(searchStatusText)
-                                    }
-                                }
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
+                                searchProgressLabel
                             }
                         }
                     }
+                    .padding(16)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
             }
+            LauncherKeyboardFooter(isSearching: !searchText.isEmpty,
+                                   isSemanticSearching: appState.isSemanticSearching)
         }
         .opacity(didAppear ? 1 : 0)
         .onAppear {
@@ -205,118 +180,90 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 12) {
             searchField
-                .frame(maxWidth: 640)
-            Spacer()
+                .frame(maxWidth: .infinity)
 
-            if searchText.isEmpty, isLibraryExpanded {
-                Text("All Applications")
-                    .font(.title3.weight(.semibold))
-                Text("\(appState.totalAppCount)")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Menu {
-                    Button {
-                        appState.refreshApps()
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
-
-                    Divider()
-
-                    Menu {
-                        ForEach(AppPreferences.SortOption.allCases) { option in
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    preferences.sortOption = option
-                                }
-                            } label: {
-                                if option == preferences.sortOption {
-                                    Label(option.title, systemImage: "checkmark")
-                                } else {
-                                    Text(option.title)
-                                }
-                            }
-                        }
-                        if preferences.sortOption != .custom {
-                            Divider()
-                            Button("Restore Default Order") {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    preferences.sortOption = .custom
-                                }
-                            }
-                        }
-                    } label: {
-                        Label("Sort", systemImage: "arrow.up.arrow.down")
-                    }
-
-                    Divider()
-
-                    Button {
-                        if preferences.sortOption != .custom {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                preferences.sortOption = .custom
-                            }
-                        }
-                        newFolderName = ""
-                        isCreatingFolder = true
-                    } label: {
-                        Label("New Folder", systemImage: "folder.badge.plus")
-                    }
-                    Button {
-                        openWindow(id: "recipe-studio")
-                    } label: {
-                        Label("New Recipe Studio", systemImage: "square.stack.3d.up")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .menuStyle(.borderlessButton)
-                .buttonStyle(.bordered)
-            }
-
-            if searchText.isEmpty {
+            if !searchText.isEmpty {
+                SearchKindFilterMenu(selectedKinds: $selectedKinds)
+            } else {
                 Button {
                     withAnimation(.snappy(duration: 0.25)) {
                         isLibraryExpanded.toggle()
                     }
                 } label: {
-                    Label(isLibraryExpanded ? "Hide Apps" : "Show Apps",
-                          systemImage: isLibraryExpanded ? "rectangle.compress.vertical" : "square.grid.2x2")
+                    Image(systemName: isLibraryExpanded ? "chevron.backward" : "square.grid.2x2")
+                        .frame(width: 16, height: 16)
                 }
                 .buttonStyle(.bordered)
-                .help(isLibraryExpanded ? "Return to the compact launcher" : "Show the full application library")
+                .help(isLibraryExpanded ? "Back to launcher" : "Browse applications")
             }
-
-            Button {
-                InstantSendService.capture { objects in
-                    if !objects.isEmpty { objectActionRequest = ObjectActionRequest(sources: objects) }
-                }
-            } label: { Label("Instant Send", systemImage: "paperplane") }
-            .help("Capture the Finder selection, current URL, selected text, or clipboard")
 
             if appState.canUndoObjectAction {
                 Button {
                     appState.undoLastObjectAction()
-                } label: { Label("Undo \(appState.objectUndoActionName)", systemImage: "arrow.uturn.backward") }
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(.bordered)
                 .keyboardShortcut("z", modifiers: .command)
+                .help("Undo \(appState.objectUndoActionName)")
             }
 
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .imageScale(.large)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear search")
-            }
+            launcherMenu
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-        .background(.ultraThickMaterial)
+        .padding(.vertical, 12)
+        .background(.thickMaterial)
+    }
+
+    private var launcherMenu: some View {
+        Menu {
+            Button("Instant Send", systemImage: "paperplane", action: captureInstantSend)
+            Button("Recipe Studio", systemImage: "square.stack.3d.up") {
+                openWindow(id: "recipe-studio")
+            }
+            Divider()
+            Button("Refresh Applications", systemImage: "arrow.clockwise", action: appState.refreshApps)
+        } label: {
+            Image(systemName: "ellipsis")
+                .frame(width: 16, height: 16)
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.bordered)
+        .help("More actions")
+    }
+
+    private var libraryContent: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            LibraryHeader(appCount: appState.totalAppCount,
+                          sortOption: $preferences.sortOption,
+                          onRefresh: appState.refreshApps,
+                          onNewFolder: beginCreatingFolder)
+            if !favoriteApps.isEmpty {
+                AppGridSection(title: "Favorites", apps: favoriteApps)
+            }
+            if preferences.showRecentApps && !recentApps.isEmpty {
+                AppGridSection(title: "Recently Launched", apps: recentApps, trailing: {
+                    Button("Clear", action: appState.clearRecents)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                })
+            }
+            allApplicationsSection
+        }
+    }
+
+    private var searchProgressLabel: some View {
+        HStack(spacing: 8) {
+            if appState.isSemanticSearching {
+                ProgressView().controlSize(.small)
+                Text("Understanding intent…")
+            } else {
+                Text(searchStatusText)
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
     }
 
     private var searchField: some View {
@@ -474,6 +421,22 @@ struct ContentView: View {
         }
     }
 
+    private func captureInstantSend() {
+        InstantSendService.capture { objects in
+            if !objects.isEmpty {
+                objectActionRequest = ObjectActionRequest(sources: objects)
+            }
+        }
+    }
+
+    private func beginCreatingFolder() {
+        if preferences.sortOption != .custom {
+            preferences.sortOption = .custom
+        }
+        newFolderName = ""
+        isCreatingFolder = true
+    }
+
     private func toggleObjectSelection(_ item: SearchItem) {
         guard LaunchObject(searchItem: item) != nil else { return }
         if selectedObjectIDs.contains(item.id) { selectedObjectIDs.remove(item.id) }
@@ -557,48 +520,180 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
 }
 
 private struct CompactLauncherHome: View {
+    let recentApps: [DiscoveredApp]
+    let onLaunch: (DiscoveredApp) -> Void
     let onShowLibrary: () -> Void
+    let onInstantSend: () -> Void
+    let onOpenRecipeStudio: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "command.square")
-                .font(.system(size: 34, weight: .light))
+        VStack(alignment: .leading, spacing: 18) {
+            if recentApps.isEmpty {
+                HStack(spacing: 12) {
+                    Image(systemName: "command.square")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Ready when you are")
+                            .font(.headline)
+                        Text("Type above to find apps, files, actions, and recipes.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 8)
+            } else {
+                Text("RECENT")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.8)
+                HStack(spacing: 8) {
+                    ForEach(recentApps, id: \.identifier) { app in
+                        CompactRecentAppButton(app: app) {
+                            onLaunch(app)
+                        }
+                    }
+                }
+            }
+
+            Divider().opacity(0.35)
+
+            Text("QUICK ACTIONS")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("Type to launch anything")
-                .font(.title3.weight(.semibold))
-            Text("Apps, files, commands, shortcuts, recipes, and more")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Button("Browse all applications", systemImage: "square.grid.2x2", action: onShowLibrary)
-                .buttonStyle(.bordered)
+                .tracking(0.8)
+            HStack(spacing: 10) {
+                LauncherActionButton(title: "Browse Apps",
+                                     subtitle: "Open the full library",
+                                     systemImage: "square.grid.2x2",
+                                     action: onShowLibrary)
+                LauncherActionButton(title: "Instant Send",
+                                     subtitle: "Use the current selection",
+                                     systemImage: "paperplane",
+                                     action: onInstantSend)
+                LauncherActionButton(title: "Recipe Studio",
+                                     subtitle: "Build an automation",
+                                     systemImage: "square.stack.3d.up",
+                                     action: onOpenRecipeStudio)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 72)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(16)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Compact launcher")
     }
 }
 
-private struct SearchKindFilterBar: View {
+private struct CompactRecentAppButton: View {
+    let app: DiscoveredApp
+    let action: () -> Void
+
+    @State private var icon: NSImage?
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                Group {
+                    if let icon {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+                .frame(width: 38, height: 38)
+                Text(app.name)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .padding(.horizontal, 6)
+            .background(Color.primary.opacity(isHovering ? 0.08 : 0.035),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .onAppear(perform: loadIcon)
+        .onChange(of: app.identifier) { loadIcon() }
+        .help(app.name)
+        .accessibilityLabel("Open \(app.name)")
+    }
+
+    private func loadIcon() {
+        AppIconCache.shared.icon(for: app.path, size: 38) { icon = $0 }
+    }
+}
+
+private struct LauncherActionButton: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 30, height: 30)
+                    .background(Color.accentColor.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(isHovering ? 0.08 : 0.035),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
+private struct SearchKindFilterMenu: View {
     @Binding var selectedKinds: Set<SearchItemKind>
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Button("All") { selectedKinds = Set(SearchItemKind.allCases) }
-                    .buttonStyle(.borderedProminent)
-                    .tint(selectedKinds.count == SearchItemKind.allCases.count ? .accentColor : .secondary)
-                ForEach(SearchItemKind.allCases, id: \.self) { kind in
-                    Button(kind.rawValue.capitalized) { toggle(kind) }
-                        .buttonStyle(.bordered)
-                        .tint(selectedKinds.contains(kind) ? .accentColor : .secondary)
-                        .accessibilityValue(selectedKinds.contains(kind) ? "Included" : "Excluded")
+        Menu {
+            Button("All Results") {
+                selectedKinds = Set(SearchItemKind.allCases)
+            }
+            Divider()
+            ForEach(SearchItemKind.allCases, id: \.self) { kind in
+                Button {
+                    toggle(kind)
+                } label: {
+                    if selectedKinds.contains(kind) {
+                        Label(kind.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(kind.displayName)
+                    }
                 }
             }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease")
+                .frame(width: 16, height: 16)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Search categories")
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.bordered)
+        .help("Filter search results")
+        .accessibilityLabel("Filter search results")
     }
 
     private func toggle(_ kind: SearchItemKind) {
@@ -609,6 +704,80 @@ private struct SearchKindFilterBar: View {
             if selectedKinds.isEmpty { selectedKinds = Set(SearchItemKind.allCases) }
         } else {
             selectedKinds.insert(kind)
+        }
+    }
+}
+
+private struct LibraryHeader: View {
+    let appCount: Int
+    @Binding var sortOption: AppPreferences.SortOption
+    let onRefresh: () -> Void
+    let onNewFolder: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text("Application Library")
+                .font(.title2.weight(.semibold))
+            Text("\(appCount)")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Picker("Sort", selection: $sortOption) {
+                ForEach(AppPreferences.SortOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 130)
+            Button("Refresh", systemImage: "arrow.clockwise", action: onRefresh)
+                .labelStyle(.iconOnly)
+                .help("Refresh applications")
+            Button("New Folder", systemImage: "folder.badge.plus", action: onNewFolder)
+                .help("Create a new folder")
+        }
+    }
+}
+
+private struct LauncherKeyboardFooter: View {
+    let isSearching: Bool
+    let isSemanticSearching: Bool
+
+    var body: some View {
+        HStack(spacing: 16) {
+            if isSearching {
+                KeyboardHint(keys: "↑↓", label: "Select")
+                KeyboardHint(keys: "↩", label: "Open")
+                KeyboardHint(keys: "⌘K", label: "Actions")
+                KeyboardHint(keys: "Space", label: "Preview")
+            } else {
+                KeyboardHint(keys: "Type", label: "Search")
+                KeyboardHint(keys: "/", label: "AI intent")
+            }
+            Spacer()
+            if isSemanticSearching {
+                ProgressView().controlSize(.mini)
+                Text("Understanding intent")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16)
+        .frame(height: 32)
+        .background(.thinMaterial)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct KeyboardHint: View {
+    let keys: String
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(keys)
+                .font(.caption.monospaced().weight(.semibold))
+                .foregroundStyle(.primary)
+            Text(label)
         }
     }
 }
