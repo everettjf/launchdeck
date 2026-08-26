@@ -6,37 +6,28 @@ enum StatusItemIcon {
     static func make(accessibilityDescription: String) -> NSImage {
         let image = NSImage(size: size, flipped: false) { bounds in
             NSGraphicsContext.current?.shouldAntialias = true
-            NSColor.black.setStroke()
+            NSColor.black.setFill()
 
-            let stroke = NSBezierPath()
-            stroke.lineWidth = 1.45
-            stroke.lineCapStyle = .round
-            stroke.lineJoinStyle = .round
+            // A compact, pixel-grid interpretation of the app icon. The image
+            // remains a monochrome template so macOS can tint it correctly for
+            // every menu-bar appearance and selection state.
+            let pixels = NSBezierPath()
 
-            // The deck and its two capture towers.
-            stroke.move(to: NSPoint(x: 1.5, y: 2.5))
-            stroke.line(to: NSPoint(x: 16.5, y: 2.5))
-            stroke.move(to: NSPoint(x: 3, y: 2.5))
-            stroke.line(to: NSPoint(x: 3, y: 13.5))
-            stroke.line(to: NSPoint(x: 6.5, y: 11.5))
-            stroke.move(to: NSPoint(x: 15, y: 2.5))
-            stroke.line(to: NSPoint(x: 15, y: 13.5))
-            stroke.line(to: NSPoint(x: 11.5, y: 11.5))
+            // The stronger base deck and two mirrored capture brackets.
+            pixels.appendRect(NSRect(x: 2, y: 2, width: 14, height: 2))
+            pixels.appendRect(NSRect(x: 3, y: 4, width: 2, height: 9))
+            pixels.appendRect(NSRect(x: 13, y: 4, width: 2, height: 9))
+            pixels.appendRect(NSRect(x: 3, y: 12, width: 4, height: 2))
+            pixels.appendRect(NSRect(x: 11, y: 12, width: 4, height: 2))
+            pixels.appendRect(NSRect(x: 6, y: 10, width: 2, height: 2))
+            pixels.appendRect(NSRect(x: 10, y: 10, width: 2, height: 2))
 
-            // A descending reusable vehicle held above the launch deck.
-            stroke.move(to: NSPoint(x: 7.25, y: 7))
-            stroke.line(to: NSPoint(x: 7.25, y: 12.5))
-            stroke.curve(to: NSPoint(x: 9, y: 16),
-                         controlPoint1: NSPoint(x: 7.25, y: 14.1),
-                         controlPoint2: NSPoint(x: 8.25, y: 15.4))
-            stroke.curve(to: NSPoint(x: 10.75, y: 12.5),
-                         controlPoint1: NSPoint(x: 9.75, y: 15.4),
-                         controlPoint2: NSPoint(x: 10.75, y: 14.1))
-            stroke.line(to: NSPoint(x: 10.75, y: 7))
-            stroke.move(to: NSPoint(x: 7.25, y: 7))
-            stroke.line(to: NSPoint(x: 9, y: 8.25))
-            stroke.line(to: NSPoint(x: 10.75, y: 7))
-            stroke.stroke()
+            // The enlarged suspended core: abstract and deliberately not a
+            // literal rocket silhouette.
+            pixels.appendRect(NSRect(x: 7, y: 7, width: 4, height: 4))
+            pixels.appendRect(NSRect(x: 8, y: 6, width: 2, height: 1))
+            pixels.appendRect(NSRect(x: 8, y: 11, width: 2, height: 1))
+            pixels.fill()
 
             return bounds.size == size
         }
