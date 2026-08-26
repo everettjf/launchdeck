@@ -41,6 +41,10 @@ struct ContentView: View {
         appState.recentApps()
     }
 
+    private var launcherRecentApps: [DiscoveredApp] {
+        Array(recentApps.prefix(5))
+    }
+
     private var allApps: [DiscoveredApp] {
         appState.allApps()
     }
@@ -122,18 +126,19 @@ struct ContentView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
-                .opacity(0.25)
             if searchText.isEmpty, !isLibraryExpanded {
                 CompactLauncherHome(
-                    recentApps: Array(recentApps.prefix(5)),
+                    recentApps: launcherRecentApps,
+                    searchBar: { launcherToolbar },
                     onLaunch: appState.launch,
                     onShowLibrary: showLibrary,
                     onInstantSend: captureInstantSend,
                     onOpenRecipeStudio: { openWindow(id: "recipe-studio") }
                 )
             } else {
+                header
+                Divider()
+                    .opacity(0.25)
                 ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 28) {
                         if searchText.isEmpty {
@@ -158,9 +163,9 @@ struct ContentView: View {
                     }
                     .padding(16)
                 }
+                LauncherKeyboardFooter(isSearching: !searchText.isEmpty,
+                                       isSemanticSearching: appState.isSemanticSearching)
             }
-            LauncherKeyboardFooter(isSearching: !searchText.isEmpty,
-                                   isSemanticSearching: appState.isSemanticSearching)
         }
         .opacity(didAppear ? 1 : 0)
         .onAppear {
@@ -178,6 +183,13 @@ struct ContentView: View {
     }
 
     private var header: some View {
+        launcherToolbar
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.thickMaterial)
+    }
+
+    private var launcherToolbar: some View {
         HStack(spacing: 12) {
             searchField
                 .frame(maxWidth: .infinity)
@@ -211,9 +223,6 @@ struct ContentView: View {
 
             launcherMenu
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.thickMaterial)
     }
 
     private var launcherMenu: some View {
@@ -323,9 +332,14 @@ struct ContentView: View {
                 .onKeyPress(phases: .down) { press in
                     guard press.modifiers.contains(.command),
                           let character = press.characters.first,
-                          let index = commandShortcutIndex(for: character),
-                          unifiedResults.indices.contains(index) else { return .ignored }
-                    runSearchItem(unifiedResults[index])
+                          let index = commandShortcutIndex(for: character) else { return .ignored }
+                    if unifiedResults.indices.contains(index) {
+                        runSearchItem(unifiedResults[index])
+                    } else if searchText.isEmpty, launcherRecentApps.indices.contains(index) {
+                        appState.launch(launcherRecentApps[index])
+                    } else {
+                        return .ignored
+                    }
                     return .handled
                 }
             if !searchText.isEmpty {
@@ -519,67 +533,95 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
 
 }
 
-private struct CompactLauncherHome: View {
+private struct CompactLauncherHome<SearchBar: View>: View {
     let recentApps: [DiscoveredApp]
+    @ViewBuilder let searchBar: () -> SearchBar
     let onLaunch: (DiscoveredApp) -> Void
     let onShowLibrary: () -> Void
     let onInstantSend: () -> Void
     let onOpenRecipeStudio: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            if recentApps.isEmpty {
-                HStack(spacing: 12) {
-                    Image(systemName: "command.square")
-                        .font(.system(size: 28, weight: .light))
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Ready when you are")
-                            .font(.headline)
-                        Text("Type above to find apps, files, actions, and recipes.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 8)
-            } else {
-                Text("RECENT")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .tracking(0.8)
-                HStack(spacing: 8) {
-                    ForEach(recentApps, id: \.identifier) { app in
-                        CompactRecentAppButton(app: app) {
-                            onLaunch(app)
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
+                searchBar()
+                    .padding(12)
+
+                Divider().opacity(0.25)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    if recentApps.isEmpty {
+                        HStack(spacing: 10) {
+                            Image(systemName: "command.square")
+                                .font(.system(size: 24, weight: .light))
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Ready when you are")
+                                    .font(.headline)
+                                Text("Type above to find apps, files, actions, and recipes.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(height: 76)
+                    } else {
+                        HStack {
+                            Text("RECENT")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .tracking(0.8)
+                            Spacer()
+                            Text("⌘1–5 to launch")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        HStack(spacing: 8) {
+                            ForEach(recentApps, id: \.identifier) { app in
+                                CompactRecentAppButton(app: app) {
+                                    onLaunch(app)
+                                }
+                            }
                         }
                     }
+
+                    HStack(spacing: 14) {
+                        KeyboardHint(keys: "Type", label: "Search")
+                        KeyboardHint(keys: "/", label: "AI intent")
+                        Spacer()
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .combine)
                 }
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 11)
+            }
+            .background(.regularMaterial,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.primary.opacity(0.16), lineWidth: 1)
             }
 
-            Divider().opacity(0.35)
-
-            Text("QUICK ACTIONS")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .tracking(0.8)
             HStack(spacing: 10) {
                 LauncherActionButton(title: "Browse Apps",
-                                     subtitle: "Open the full library",
+                                     subtitle: "Full library",
                                      systemImage: "square.grid.2x2",
                                      action: onShowLibrary)
                 LauncherActionButton(title: "Instant Send",
-                                     subtitle: "Use the current selection",
+                                     subtitle: "Current selection",
                                      systemImage: "paperplane",
                                      action: onInstantSend)
                 LauncherActionButton(title: "Recipe Studio",
-                                     subtitle: "Build an automation",
+                                     subtitle: "Automations",
                                      systemImage: "square.stack.3d.up",
                                      action: onOpenRecipeStudio)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(14)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Compact launcher")
     }
@@ -594,7 +636,7 @@ private struct CompactRecentAppButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 7) {
+            VStack(spacing: 5) {
                 Group {
                     if let icon {
                         Image(nsImage: icon)
@@ -604,13 +646,13 @@ private struct CompactRecentAppButton: View {
                         ProgressView().controlSize(.small)
                     }
                 }
-                .frame(width: 38, height: 38)
+                .frame(width: 30, height: 30)
                 Text(app.name)
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
+            .frame(height: 76)
             .padding(.horizontal, 6)
             .background(Color.primary.opacity(isHovering ? 0.08 : 0.035),
                         in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -624,7 +666,7 @@ private struct CompactRecentAppButton: View {
     }
 
     private func loadIcon() {
-        AppIconCache.shared.icon(for: app.path, size: 38) { icon = $0 }
+        AppIconCache.shared.icon(for: app.path, size: 30) { icon = $0 }
     }
 }
 
@@ -638,13 +680,13 @@ private struct LauncherActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.tint)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 26, height: 26)
                     .background(Color.accentColor.opacity(0.12),
-                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.callout.weight(.semibold))
@@ -656,7 +698,8 @@ private struct LauncherActionButton: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(10)
+            .padding(.horizontal, 10)
+            .frame(height: 48)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(isHovering ? 0.08 : 0.035),
                         in: RoundedRectangle(cornerRadius: 10, style: .continuous))
