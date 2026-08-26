@@ -26,9 +26,9 @@ struct LaunchDeckApp: App {
                 .background(WindowAccessor())
                 .environmentObject(appState)
                 .environmentObject(preferences)
-                .frame(minWidth: 620, idealWidth: 720, minHeight: 300, idealHeight: 350)
+                .frame(minWidth: 620, idealWidth: 720, minHeight: 300, idealHeight: 300)
         }
-        .defaultSize(width: 720, height: 350)
+        .defaultSize(width: 720, height: 300)
         .defaultPosition(.center)
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unifiedCompact)

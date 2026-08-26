@@ -13,6 +13,7 @@ final class WindowManager {
 
     /// Identifier of the main WindowGroup scene.
     static let mainSceneID = "main"
+    static let compactContentHeight: CGFloat = 300
 
     private weak var mainWindow: NSWindow?
     private var openWindowAction: OpenWindowAction?
@@ -22,6 +23,7 @@ final class WindowManager {
     /// Called from the main scene's content when its window appears.
     func register(window: NSWindow) {
         mainWindow = window
+        compactRestoredWindow(window)
     }
 
     func unregister(window: NSWindow) {
@@ -72,6 +74,28 @@ final class WindowManager {
         guard let completion else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             completion()
+        }
+    }
+
+    /// SwiftUI's default size only applies to a new scene. AppKit can restore a
+    /// much taller frame saved by an earlier release, leaving the compact home
+    /// surrounded by empty space. Shrink only the restored height, preserving
+    /// both the user's width and the window's top edge.
+    private func compactRestoredWindow(_ window: NSWindow) {
+        DispatchQueue.main.async {
+            let currentContentHeight = window.contentLayoutRect.height
+            guard currentContentHeight > Self.compactContentHeight + 1 else { return }
+
+            let targetFrameHeight = window.frameRect(
+                forContentRect: NSRect(x: 0,
+                                       y: 0,
+                                       width: window.contentLayoutRect.width,
+                                       height: Self.compactContentHeight)
+            ).height
+            var targetFrame = window.frame
+            targetFrame.origin.y += targetFrame.height - targetFrameHeight
+            targetFrame.size.height = targetFrameHeight
+            window.setFrame(targetFrame, display: true)
         }
     }
 }
