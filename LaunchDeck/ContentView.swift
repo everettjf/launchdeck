@@ -49,6 +49,10 @@ struct ContentView: View {
         appState.allApps()
     }
 
+    private var isCompactHome: Bool {
+        searchText.isEmpty && !isLibraryExpanded
+    }
+
     var body: some View {
         ZStack {
             VisualEffectBackground()
@@ -125,48 +129,72 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        VStack(spacing: 0) {
-            if searchText.isEmpty, !isLibraryExpanded {
-                CompactLauncherHome(
-                    recentApps: launcherRecentApps,
-                    searchBar: { launcherToolbar },
-                    onLaunch: appState.launch,
-                    onShowLibrary: showLibrary,
-                    onInstantSend: captureInstantSend,
-                    onOpenRecipeStudio: { openWindow(id: "recipe-studio") }
-                )
-            } else {
-                header
-                Divider()
-                    .opacity(0.25)
-                ScrollView(.vertical, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 28) {
-                        if searchText.isEmpty {
-                            libraryContent
-                        } else if unifiedResults.isEmpty {
-                            ContentUnavailableView("No Results",
-                                                   systemImage: "magnifyingglass",
-                                                   description: Text(noResultsMessage))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 36)
-                        } else {
-                            UnifiedSearchResultsView(items: unifiedResults,
-                                                     selectedIdentifier: searchSelection.selectedIdentifier,
-                                                     includedIdentifiers: selectedObjectIDs,
-                                                     reason: appState.intentDetail,
-                                                     isCommandPressed: isCommandPressed,
-                                                     onToggleIncluded: toggleObjectSelection,
-                                                     onRun: runSearchItem) {
-                                searchProgressLabel
-                            }
+        VStack(spacing: isCompactHome ? 10 : 0) {
+            VStack(spacing: 0) {
+                launcherToolbar
+                    .padding(isCompactHome
+                        ? EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
+                        : EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+                    .background {
+                        if !isCompactHome {
+                            Rectangle().fill(.thickMaterial)
                         }
                     }
-                    .padding(16)
+
+                Divider().opacity(0.25)
+
+                if isCompactHome {
+                    CompactLauncherRecents(recentApps: launcherRecentApps,
+                                           onLaunch: appState.launch)
+                } else {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 28) {
+                            if searchText.isEmpty {
+                                libraryContent
+                            } else if unifiedResults.isEmpty {
+                                ContentUnavailableView("No Results",
+                                                       systemImage: "magnifyingglass",
+                                                       description: Text(noResultsMessage))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 36)
+                            } else {
+                                UnifiedSearchResultsView(items: unifiedResults,
+                                                         selectedIdentifier: searchSelection.selectedIdentifier,
+                                                         includedIdentifiers: selectedObjectIDs,
+                                                         reason: appState.intentDetail,
+                                                         isCommandPressed: isCommandPressed,
+                                                         onToggleIncluded: toggleObjectSelection,
+                                                         onRun: runSearchItem) {
+                                    searchProgressLabel
+                                }
+                            }
+                        }
+                        .padding(16)
+                    }
+                    LauncherKeyboardFooter(isSearching: !searchText.isEmpty,
+                                           isSemanticSearching: appState.isSemanticSearching)
                 }
-                LauncherKeyboardFooter(isSearching: !searchText.isEmpty,
-                                       isSemanticSearching: appState.isSemanticSearching)
+            }
+            .background {
+                if isCompactHome {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.regularMaterial)
+                }
+            }
+            .overlay {
+                if isCompactHome {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.primary.opacity(0.16), lineWidth: 1)
+                }
+            }
+
+            if isCompactHome {
+                LauncherQuickActions(onShowLibrary: showLibrary,
+                                     onInstantSend: captureInstantSend,
+                                     onOpenRecipeStudio: { openWindow(id: "recipe-studio") })
             }
         }
+        .padding(isCompactHome ? 14 : 0)
         .opacity(didAppear ? 1 : 0)
         .onAppear {
             withAnimation(.easeOut(duration: 0.4)) {
@@ -180,13 +208,6 @@ struct ContentView: View {
                                appState.createEmptyFolder(named: name)
                            })
         }
-    }
-
-    private var header: some View {
-        launcherToolbar
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.thickMaterial)
     }
 
     private var launcherToolbar: some View {
@@ -533,97 +554,86 @@ private struct UnifiedSearchResultsView<Trailing: View>: View {
 
 }
 
-private struct CompactLauncherHome<SearchBar: View>: View {
+private struct CompactLauncherRecents: View {
     let recentApps: [DiscoveredApp]
-    @ViewBuilder let searchBar: () -> SearchBar
     let onLaunch: (DiscoveredApp) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if recentApps.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "command.square")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Ready when you are")
+                            .font(.headline)
+                        Text("Type above to find apps, files, actions, and recipes.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(height: 76)
+            } else {
+                HStack {
+                    Text("RECENT")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .tracking(0.8)
+                    Spacer()
+                    Text("⌘1–5 to launch")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                HStack(spacing: 8) {
+                    ForEach(recentApps, id: \.identifier) { app in
+                        CompactRecentAppButton(app: app) {
+                            onLaunch(app)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 14) {
+                KeyboardHint(keys: "Type", label: "Search")
+                KeyboardHint(keys: "/", label: "AI intent")
+                Spacer()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 11)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Recent applications")
+    }
+}
+
+private struct LauncherQuickActions: View {
     let onShowLibrary: () -> Void
     let onInstantSend: () -> Void
     let onOpenRecipeStudio: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 0) {
-                searchBar()
-                    .padding(12)
-
-                Divider().opacity(0.25)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    if recentApps.isEmpty {
-                        HStack(spacing: 10) {
-                            Image(systemName: "command.square")
-                                .font(.system(size: 24, weight: .light))
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Ready when you are")
-                                    .font(.headline)
-                                Text("Type above to find apps, files, actions, and recipes.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(height: 76)
-                    } else {
-                        HStack {
-                            Text("RECENT")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .tracking(0.8)
-                            Spacer()
-                            Text("⌘1–5 to launch")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-                        HStack(spacing: 8) {
-                            ForEach(recentApps, id: \.identifier) { app in
-                                CompactRecentAppButton(app: app) {
-                                    onLaunch(app)
-                                }
-                            }
-                        }
-                    }
-
-                    HStack(spacing: 14) {
-                        KeyboardHint(keys: "Type", label: "Search")
-                        KeyboardHint(keys: "/", label: "AI intent")
-                        Spacer()
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityElement(children: .combine)
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 11)
-            }
-            .background(.regularMaterial,
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.primary.opacity(0.16), lineWidth: 1)
-            }
-
-            HStack(spacing: 10) {
-                LauncherActionButton(title: "Browse Apps",
-                                     subtitle: "Full library",
-                                     systemImage: "square.grid.2x2",
-                                     action: onShowLibrary)
-                LauncherActionButton(title: "Instant Send",
-                                     subtitle: "Current selection",
-                                     systemImage: "paperplane",
-                                     action: onInstantSend)
-                LauncherActionButton(title: "Recipe Studio",
-                                     subtitle: "Automations",
-                                     systemImage: "square.stack.3d.up",
-                                     action: onOpenRecipeStudio)
-            }
+        HStack(spacing: 10) {
+            LauncherActionButton(title: "Browse Apps",
+                                 subtitle: "Full library",
+                                 systemImage: "square.grid.2x2",
+                                 action: onShowLibrary)
+            LauncherActionButton(title: "Instant Send",
+                                 subtitle: "Current selection",
+                                 systemImage: "paperplane",
+                                 action: onInstantSend)
+            LauncherActionButton(title: "Recipe Studio",
+                                 subtitle: "Automations",
+                                 systemImage: "square.stack.3d.up",
+                                 action: onOpenRecipeStudio)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(14)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Compact launcher")
+        .accessibilityLabel("Quick actions")
     }
 }
 

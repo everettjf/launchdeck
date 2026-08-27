@@ -1,7 +1,7 @@
 # LaunchDeck
 
 <p align="center">
-  <img src="LaunchDeck/Assets.xcassets/AppIcon.appiconset/appicon_512x512@2x.png" width="160" alt="LaunchDeck pixel-art rocket icon">
+  <img src="LaunchDeck/Assets.xcassets/AppIcon.appiconset/appicon_512x512@2x.png" width="160" alt="LaunchDeck abstract pixel launcher icon">
 </p>
 
 Repository: <https://github.com/everettjf/launchdeck>

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-and-performance:
+    name: Core tests and 100k search gate
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Run package tests
+        run: swift test
+        working-directory: Core
+
+      - name: Run 100k search and memory benchmark
+        run: |
+          mkdir -p .benchmark-results
+          swift run -c release application-index-benchmark --apps 100000 \
+            > .benchmark-results/search-100000.json
+          python3 ../scripts/validate-search-benchmark.py \
+            .benchmark-results/search-100000.json ../Benchmarks/search-thresholds-100k.json
+        working-directory: Core
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-benchmark-100000
+          path: Core/.benchmark-results/search-100000.json
+
+  app:
+    name: App tests and universal release build
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Run app tests
+        run: >-
+          xcodebuild -project LaunchDeck.xcodeproj -scheme LaunchDeck
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/LaunchDeckTests"
+          CODE_SIGNING_ALLOWED=NO test
+
+      - name: Build universal release
+        run: >-
+          xcodebuild -project LaunchDeck.xcodeproj -scheme LaunchDeck
+          -configuration Release -derivedDataPath "$RUNNER_TEMP/LaunchDeckRelease"
+          ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO build
+
+      - name: Validate release metadata
+        run: >-
+          bash scripts/validate-release-build.sh
+          "$RUNNER_TEMP/LaunchDeckRelease/Build/Products/Release/LaunchDeck.app"
