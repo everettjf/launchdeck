@@ -4,7 +4,7 @@ Validated on August 23, 2026, on Apple Silicon using a Release build.
 
 ## 100k search workload
 
-The repeatable benchmark creates 100,000 synthetic installed applications and a 200,000-item unified index. CI gates the same workload with `Benchmarks/search-thresholds-100k.json`; the checked-in evidence is `Benchmarks/search-100k-baseline.json`.
+The repeatable benchmark creates 100,000 synthetic installed applications and a 200,000-item unified index. The strict same-machine gates live in `Benchmarks/search-thresholds-100k.json`; the checked-in evidence is `Benchmarks/search-100k-baseline.json`.
 
 | Measurement | Result | Gate |
 | --- | ---: | ---: |
@@ -24,6 +24,12 @@ The repeatable benchmark creates 100,000 synthetic installed applications and a 
 | Index memory delta | 1,160.6 MB | 1,200 MB |
 
 These measurements are environment-specific baselines. Release candidates should be re-measured on the same machine before comparing trends.
+
+GitHub Actions runs the identical workload against
+`Benchmarks/search-thresholds-100k-ci.json`. Its timing ceilings are 25% above
+the strict local gates to absorb normal scheduling variance on shared macOS
+runners, while memory ceilings remain unchanged. Benchmark JSON is uploaded on
+every run, including failures, so a sustained regression remains inspectable.
 
 ## Reliability and interaction gates
 

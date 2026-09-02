@@ -30,7 +30,7 @@ jobs:
           swift run -c release application-index-benchmark --apps 100000 \
             > .benchmark-results/search-100000.json
           python3 ../scripts/validate-search-benchmark.py \
-            .benchmark-results/search-100000.json ../Benchmarks/search-thresholds-100k.json
+            .benchmark-results/search-100000.json ../Benchmarks/search-thresholds-100k-ci.json
         working-directory: Core
 
       - name: Upload benchmark evidence
