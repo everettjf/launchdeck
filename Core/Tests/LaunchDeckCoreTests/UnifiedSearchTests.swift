@@ -45,5 +45,22 @@ struct UnifiedSearchTests {
         let index = UnifiedSearchIndex(items: items)
         #expect(index.search("benchmark app 50").first?.item.id == "exact")
         #expect(index.search("benchmrk app 50").first?.item.id == "exact")
+        #expect(index.search("b").contains { $0.item.id == "exact" })
+        #expect(index.search("benc").first?.item.id == "exact")
+    }
+
+    @Test("Qualified multi-token search narrows candidates without changing filters")
+    func qualifiedTokenNarrowingPreservesFilters() {
+        let items = [
+            SearchItem(id: "app", kind: .application, title: "Quarterly Brief 50",
+                       target: .application(identifier: "brief", path: "/Brief.app")),
+            SearchItem(id: "pdf", kind: .file, title: "Quarterly Brief 50", keywords: ["report"],
+                       target: .file(path: "/Documents/Quarterly Brief 50.pdf")),
+            SearchItem(id: "wrong-extension", kind: .file, title: "Quarterly Brief 50",
+                       target: .file(path: "/Documents/Quarterly Brief 50.txt")),
+        ]
+        let index = UnifiedSearchIndex(items: items)
+        let result = index.search(SearchQuery.parse("kind:file ext:pdf quarterly brief 50"))
+        #expect(result.map(\.item.id) == ["pdf"])
     }
 }

@@ -33,4 +33,18 @@ final class LocalContentIndexerTests: XCTestCase {
         XCTAssertTrue(items.contains { $0.kind == .folder && $0.title.hasPrefix("LaunchDeckRecent-") })
         XCTAssertFalse(items.contains { $0.title == "missing" })
     }
+
+    func testCancellationStopsScanningWithoutPublishingPartialResults() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("LaunchDeckCancelled-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        for index in 0..<100 {
+            XCTAssertTrue(FileManager.default.createFile(atPath: root.appendingPathComponent("file-\(index).md").path,
+                                                         contents: Data()))
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let items = LocalContentIndexer().index(configuration: .init(roots: [root]),
+                                                isCancelled: { true })
+        XCTAssertTrue(items.isEmpty)
+    }
 }

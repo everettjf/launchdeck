@@ -1,5 +1,8 @@
 import Foundation
 import LaunchDeckCore
+import OSLog
+
+private nonisolated let localIndexStoreLogger = Logger(subsystem: "com.everettjf.launchdeck", category: "LocalIndexStore")
 
 nonisolated struct LocalIndexSnapshot: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
@@ -29,11 +32,20 @@ nonisolated struct LocalIndexStore: Sendable {
     }
 
     func load(expectedRootPaths: [String]) -> LocalIndexSnapshot? {
-        guard let data = try? Data(contentsOf: fileURL),
-              let snapshot = try? JSONDecoder().decode(LocalIndexSnapshot.self, from: data),
-              snapshot.schemaVersion == LocalIndexSnapshot.currentSchemaVersion,
-              snapshot.rootPaths == LocalIndexSnapshot.canonicalRootPaths(expectedRootPaths) else { return nil }
-        return snapshot
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let snapshot = try JSONDecoder().decode(LocalIndexSnapshot.self, from: data)
+            guard snapshot.schemaVersion == LocalIndexSnapshot.currentSchemaVersion,
+                  snapshot.rootPaths == LocalIndexSnapshot.canonicalRootPaths(expectedRootPaths) else {
+                localIndexStoreLogger.notice("Ignoring incompatible local index cache")
+                return nil
+            }
+            return snapshot
+        } catch {
+            localIndexStoreLogger.error("Local index cache load failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     func save(_ snapshot: LocalIndexSnapshot) throws {

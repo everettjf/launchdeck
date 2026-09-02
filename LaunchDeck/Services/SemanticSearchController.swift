@@ -1,6 +1,9 @@
 import Combine
 import Foundation
 import LaunchDeckCore
+import OSLog
+
+private nonisolated let semanticControllerLogger = Logger(subsystem: "com.everettjf.launchdeck", category: "IntentSearch")
 
 @MainActor
 final class SemanticSearchController: ObservableObject {
@@ -50,6 +53,7 @@ final class SemanticSearchController: ObservableObject {
                 try await Task.sleep(for: debounce)
                 guard !Task.isCancelled, let self, requestGeneration == self.generation else { return }
                 self.phase = .searching
+                let startedAt = ContinuousClock.now
                 let candidates = self.candidatesProvider(query)
                 let found = try await withThrowingTaskGroup(of: [IntentRecommendation].self) { group in
                     group.addTask { try await self.searcher.search(query: query, candidates: candidates) }
@@ -64,12 +68,14 @@ final class SemanticSearchController: ObservableObject {
                 guard !Task.isCancelled, requestGeneration == self.generation else { return }
                 self.results = found
                 self.phase = .completed
+                semanticControllerLogger.info("Intent search completed candidates=\(candidates.count) results=\(found.count) duration=\(Self.milliseconds(startedAt.duration(to: .now)), format: .fixed(precision: 1))ms")
             } catch is CancellationError {
                 return
             } catch {
                 guard requestGeneration == self?.generation else { return }
                 self?.results = []
                 self?.phase = .failed(error.localizedDescription)
+                semanticControllerLogger.error("Intent search failed: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -79,6 +85,12 @@ final class SemanticSearchController: ObservableObject {
         searchTask = nil
         if !results.isEmpty { results = [] }
         phase = .idle
+    }
+
+    nonisolated private static func milliseconds(_ duration: Duration) -> Double {
+        let components = duration.components
+        return Double(components.seconds) * 1_000
+            + Double(components.attoseconds) / 1_000_000_000_000_000
     }
 }
 

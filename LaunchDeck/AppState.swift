@@ -2,7 +2,20 @@ import AppKit
 import Combine
 import Foundation
 import LaunchDeckCore
+import OSLog
 import SwiftUI
+
+private nonisolated let appStateLogger = Logger(subsystem: "com.everettjf.launchdeck", category: "AppState")
+
+private nonisolated struct UnifiedIndexSnapshot: Sendable {
+    let catalog: [String: SearchItem]
+    let index: UnifiedSearchIndex
+
+    init(items: [SearchItem]) {
+        catalog = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        index = UnifiedSearchIndex(items: items)
+    }
+}
 
 /// Orchestrates the app: discovery, favorites, recents, and launch actions.
 /// Layout mutations live in LayoutController, AI search in SemanticSearchController,
@@ -16,6 +29,7 @@ final class AppState: ObservableObject {
     @Published private(set) var indexedItems: [SearchItem] = []
     @Published private(set) var recentSearchQueries: [String] = []
     @Published private(set) var instantSendObjects: [LaunchObject] = []
+    @Published private(set) var searchCatalogRevision = 0
 
     let layoutController: LayoutController
     let searchController: SemanticSearchController
@@ -74,6 +88,11 @@ final class AppState: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var directoryMonitor: ApplicationDirectoryMonitor?
     private var localIndexGeneration = 0
+    private var discoveryGeneration = 0
+    private var unifiedIndexGeneration = 0
+    private var discoveryTask: Task<Void, Never>?
+    private var localIndexTask: Task<Void, Never>?
+    private var unifiedIndexTask: Task<Void, Never>?
 
     var searchFocusPublisher: AnyPublisher<Void, Never> {
         focusPublisher.eraseToAnyPublisher()
@@ -223,9 +242,14 @@ final class AppState: ObservableObject {
     }
 
     private func refreshApps(changedPaths: [String]?) {
+        discoveryGeneration += 1
+        let requestGeneration = discoveryGeneration
+        discoveryTask?.cancel()
         let discoveryService = discoveryService
         let showSystemApps = preferences.showSystemApps
-        Task.detached(priority: .userInitiated) { [weak self] in
+        changedPaths?.forEach { AppIconCache.shared.invalidate(path: $0) }
+        let startedAt = ContinuousClock.now
+        discoveryTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             let discovered: [DiscoveredApp]
             if let changedPaths {
@@ -234,11 +258,16 @@ final class AppState: ObservableObject {
             } else {
                 discovered = discoveryService.discoverApplications(showSystemApps: showSystemApps)
             }
-            await self.handleDiscoveredApps(discovered)
+            guard !Task.isCancelled else { return }
+            await self.handleDiscoveredApps(discovered, generation: requestGeneration,
+                                             elapsed: startedAt.duration(to: .now))
         }
     }
 
-    private func handleDiscoveredApps(_ discovered: [DiscoveredApp]) {
+    private func handleDiscoveredApps(_ discovered: [DiscoveredApp], generation: Int,
+                                      elapsed: Duration) {
+        guard generation == discoveryGeneration else { return }
+        appStateLogger.info("Application discovery completed count=\(discovered.count) duration=\(Self.milliseconds(elapsed), format: .fixed(precision: 1))ms")
         withAnimation(.easeInOut(duration: 0.25)) {
             apps = discovered
         }
@@ -651,21 +680,43 @@ final class AppState: ObservableObject {
     func refreshLocalContent(rootPaths: [String]? = nil) {
         localIndexGeneration += 1
         let requestGeneration = localIndexGeneration
+        localIndexTask?.cancel()
         let rootPaths = rootPaths ?? preferences.indexedRootPaths
-        if let cached = localIndexStore.load(expectedRootPaths: rootPaths) {
-            indexedItems = cached.items
-            rebuildUnifiedIndex()
-        }
         let roots = rootPaths.map(URL.init(fileURLWithPath:))
-        let storedRecentURLs = recentDocumentStore.load().map { URL(fileURLWithPath: $0.path) }
-        Task.detached(priority: .utility) { [weak self] in
-            let items = LocalContentIndexer().index(configuration: .init(roots: roots), recentURLs: storedRecentURLs)
-            await MainActor.run {
-                guard let self, requestGeneration == self.localIndexGeneration else { return }
-                self.indexedItems = items
-                self.rebuildUnifiedIndex()
-                try? self.localIndexStore.save(LocalIndexSnapshot(rootPaths: rootPaths, items: items))
+        let localIndexStore = localIndexStore
+        let recentDocumentStore = recentDocumentStore
+        localIndexTask = Task.detached(priority: .utility) { [weak self] in
+            if let cached = localIndexStore.load(expectedRootPaths: rootPaths) {
+                guard !Task.isCancelled else { return }
+                await self?.applyIndexedItems(cached.items, generation: requestGeneration, source: "cache")
             }
+
+            let startedAt = ContinuousClock.now
+            let storedRecentURLs = recentDocumentStore.load().map { URL(fileURLWithPath: $0.path) }
+            let items = LocalContentIndexer().index(configuration: .init(roots: roots),
+                                                    recentURLs: storedRecentURLs,
+                                                    isCancelled: { Task.isCancelled })
+            guard !Task.isCancelled else { return }
+            do {
+                try localIndexStore.save(LocalIndexSnapshot(rootPaths: rootPaths, items: items))
+            } catch {
+                appStateLogger.error("Local index cache save failed: \(error.localizedDescription, privacy: .public)")
+            }
+            guard !Task.isCancelled else { return }
+            await self?.applyIndexedItems(items, generation: requestGeneration, source: "scan",
+                                          elapsed: startedAt.duration(to: .now))
+        }
+    }
+
+    private func applyIndexedItems(_ items: [SearchItem], generation: Int, source: String,
+                                   elapsed: Duration? = nil) {
+        guard generation == localIndexGeneration else { return }
+        indexedItems = items
+        rebuildUnifiedIndex()
+        if let elapsed {
+            appStateLogger.info("Local index \(source, privacy: .public) completed count=\(items.count) duration=\(Self.milliseconds(elapsed), format: .fixed(precision: 1))ms")
+        } else {
+            appStateLogger.info("Local index cache restored count=\(items.count)")
         }
     }
 
@@ -843,11 +894,38 @@ final class AppState: ObservableObject {
     }
 
     private func rebuildUnifiedIndex(approvedShortcuts: [String]? = nil, recipes: [Recipe]? = nil) {
-        let items = SearchCatalogBuilder.build(apps: apps, indexedItems: indexedItems,
-                                               approvedShortcuts: approvedShortcuts ?? preferences.approvedShortcuts,
-                                               recipes: recipes ?? recipeStore.recipes)
-        searchItemsByIdentifier = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        unifiedSearchIndex = UnifiedSearchIndex(items: items)
+        let apps = apps
+        let indexedItems = indexedItems
+        let approvedShortcuts = approvedShortcuts ?? preferences.approvedShortcuts
+        let recipes = recipes ?? recipeStore.recipes
+        unifiedIndexGeneration += 1
+        let requestGeneration = unifiedIndexGeneration
+        unifiedIndexTask?.cancel()
+        let startedAt = ContinuousClock.now
+        unifiedIndexTask = Task.detached(priority: .userInitiated) { [weak self] in
+            let items = SearchCatalogBuilder.build(apps: apps, indexedItems: indexedItems,
+                                                   approvedShortcuts: approvedShortcuts,
+                                                   recipes: recipes)
+            let snapshot = UnifiedIndexSnapshot(items: items)
+            guard !Task.isCancelled else { return }
+            await self?.applyUnifiedIndex(snapshot, generation: requestGeneration,
+                                          elapsed: startedAt.duration(to: .now))
+        }
+    }
+
+    private func applyUnifiedIndex(_ snapshot: UnifiedIndexSnapshot, generation: Int,
+                                   elapsed: Duration) {
+        guard generation == unifiedIndexGeneration else { return }
+        searchItemsByIdentifier = snapshot.catalog
+        unifiedSearchIndex = snapshot.index
+        searchCatalogRevision &+= 1
+        appStateLogger.debug("Unified index built count=\(snapshot.catalog.count) duration=\(Self.milliseconds(elapsed), format: .fixed(precision: 1))ms")
+    }
+
+    nonisolated private static func milliseconds(_ duration: Duration) -> Double {
+        let components = duration.components
+        return Double(components.seconds) * 1_000
+            + Double(components.attoseconds) / 1_000_000_000_000_000
     }
 
     private func recordRecentDocument(_ path: String) {

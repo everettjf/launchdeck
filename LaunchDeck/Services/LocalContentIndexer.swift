@@ -18,10 +18,12 @@ nonisolated struct LocalContentIndexer: Sendable {
     ]
     private static let projectExtensions: Set<String> = ["xcodeproj", "xcworkspace", "playground"]
 
-    func index(configuration: Configuration, recentURLs: [URL] = []) -> [SearchItem] {
+    func index(configuration: Configuration, recentURLs: [URL] = [],
+               isCancelled: @Sendable () -> Bool = { false }) -> [SearchItem] {
         var found: [String: SearchItem] = [:]
         let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isHiddenKey, .nameKey]
         for root in configuration.roots where found.count < configuration.maximumItems {
+            guard !isCancelled() else { return [] }
             guard root.isFileURL else { continue }
             let rootDepth = root.standardizedFileURL.pathComponents.count
             guard let enumerator = FileManager.default.enumerator(
@@ -34,6 +36,7 @@ nonisolated struct LocalContentIndexer: Sendable {
             }
 
             while let url = enumerator.nextObject() as? URL, found.count < configuration.maximumItems {
+                guard !isCancelled() else { return [] }
                 let depth = url.standardizedFileURL.pathComponents.count - rootDepth
                 if depth > configuration.maximumDepth {
                     enumerator.skipDescendants()
@@ -62,6 +65,7 @@ nonisolated struct LocalContentIndexer: Sendable {
             }
         }
         for url in recentURLs where found.count < configuration.maximumItems && url.isFileURL {
+            guard !isCancelled() else { return [] }
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { continue }
             let kind: SearchItemKind = isDirectory.boolValue ? .folder : .file

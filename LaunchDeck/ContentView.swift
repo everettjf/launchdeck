@@ -22,8 +22,9 @@ struct ContentView: View {
     @State private var objectActionRequest: ObjectActionRequest?
     @State private var isLibraryExpanded = false
     @State private var isCommandPressed = false
+    @State private var unifiedResults: [SearchItem] = []
 
-    private var unifiedResults: [SearchItem] {
+    private func makeUnifiedResults() -> [SearchItem] {
         let query = searchText.hasPrefix("/") ? String(searchText.dropFirst()) : searchText
         guard !query.isEmpty else { return [] }
         let local = appState.searchItems(matching: query).filter { selectedKinds.contains($0.kind) }
@@ -66,16 +67,16 @@ struct ContentView: View {
                 // Handle semantic search state based on input
                 appState.handleSearchQueryChange(newValue)
             }
+            refreshSearchResults()
         }
         .onReceive(appState.$searchQuery.removeDuplicates()) { incoming in
             if searchText != incoming {
                 searchText = incoming
             }
         }
-        .onChange(of: unifiedResults.map(\.id), initial: true) {
-            searchSelection.reconcile(items: unifiedResults)
-            selectedObjectIDs.formIntersection(Set(unifiedResults.map(\.id)))
-        }
+        .onChange(of: selectedKinds) { refreshSearchResults() }
+        .onChange(of: appState.searchCatalogRevision) { refreshSearchResults() }
+        .onChange(of: appState.intentResults.map(\.id)) { refreshSearchResults() }
         .animation(.spring(response: 0.65, dampingFraction: 0.82), value: didAppear)
         .sheet(item: pendingPreviewBinding) { preview in
             ActionPreviewView(preview: preview,
@@ -432,6 +433,14 @@ struct ContentView: View {
         runSearchItem(item)
     }
 
+    private func refreshSearchResults() {
+        let results = makeUnifiedResults()
+        guard results != unifiedResults else { return }
+        unifiedResults = results
+        searchSelection.reconcile(items: results)
+        selectedObjectIDs.formIntersection(Set(results.map(\.id)))
+    }
+
     private func runSearchItem(_ item: SearchItem) {
         if case .recipe(let identifier) = item.target,
            let recipe = appState.recipeStore.recipes.first(where: { $0.id == identifier }),
@@ -500,6 +509,7 @@ struct ContentView: View {
 
     private func configure() {
         searchText = appState.searchQuery
+        refreshSearchResults()
         WindowManager.shared.registerOpenWindowAction(openWindow)
         focusCancellable = appState.searchFocusPublisher
             .receive(on: RunLoop.main)

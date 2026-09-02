@@ -69,3 +69,8 @@ jobs:
         run: >-
           bash scripts/validate-release-build.sh
           "$RUNNER_TEMP/LaunchDeckRelease/Build/Products/Release/LaunchDeck.app"
+
+      - name: Cold-launch and runtime smoke test
+        run: >-
+          bash scripts/validate-runtime-smoke.sh
+          "$RUNNER_TEMP/LaunchDeckRelease/Build/Products/Release/LaunchDeck.app"

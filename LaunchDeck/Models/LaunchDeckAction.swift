@@ -158,15 +158,15 @@ enum SystemSettingsDestination: String, CaseIterable, Identifiable, Sendable {
     case privacy = "com.apple.settings.PrivacySecurity.extension"
     case keyboard = "com.apple.Keyboard-Settings.extension"
 
-    var id: String { rawValue }
-    var title: String {
+    nonisolated var id: String { rawValue }
+    nonisolated var title: String {
         switch self {
         case .appleIntelligence: return "Apple Intelligence & Siri"
         case .privacy: return "Privacy & Security"
         case .keyboard: return "Keyboard Settings"
         }
     }
-    var url: URL { URL(string: "x-apple.systempreferences:\(rawValue)")! }
+    nonisolated var url: URL { URL(string: "x-apple.systempreferences:\(rawValue)")! }
 }
 
 struct ActionHistoryEntry: Codable, Identifiable, Hashable, Sendable {

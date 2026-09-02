@@ -22,34 +22,30 @@ public struct UnifiedSearchIndex: Sendable {
         let query = Self.normalize(query)
         guard !query.isEmpty else { return [] }
         let candidates = candidateEntries(for: query)
-        let ranked = candidates.compactMap { entry -> (SearchItem, Double)? in
+        let scored = candidates.compactMap { entry -> (SearchItem, Double)? in
             guard let score = entry.score(query) else { return nil }
             return (entry.item, score + (kindBoosts[entry.item.kind] ?? 0) + (itemBoosts[entry.item.id] ?? 0))
-        }.sorted {
-            if $0.1 != $1.1 { return $0.1 > $1.1 }
-            return $0.0.title.localizedCaseInsensitiveCompare($1.0.title) == .orderedAscending
         }
-        return limit.map { Array(ranked.prefix($0)) } ?? ranked
+        return Self.rank(scored, limit: limit)
     }
 
     public func search(_ query: SearchQuery, kindBoosts: [SearchItemKind: Double] = [:],
                        itemBoosts: [String: Double] = [:], limit: Int? = nil) -> [(item: SearchItem, score: Double)] {
-        let matching = entries.lazy.filter { query.matches($0.item) }
         let normalized = Self.normalize(query.text)
+        let candidates = normalized.isEmpty ? entries : candidateEntries(for: normalized)
+        let matching = candidates.lazy.filter { query.matches($0.item) }
         let ranked: [(SearchItem, Double)]
         if normalized.isEmpty {
-            ranked = matching.map { ($0.item, kindBoosts[$0.item.kind] ?? 0) }
-                .sorted { $0.0.title.localizedCaseInsensitiveCompare($1.0.title) == .orderedAscending }
+            let scored: [(SearchItem, Double)] = matching.map { ($0.item, kindBoosts[$0.item.kind] ?? 0) }
+            ranked = Self.rank(scored, limit: limit)
         } else {
-            ranked = matching.compactMap { entry in
+            let scored: [(SearchItem, Double)] = matching.compactMap { entry -> (SearchItem, Double)? in
                 guard let score = entry.score(normalized) else { return nil }
                 return (entry.item, score + (kindBoosts[entry.item.kind] ?? 0) + (itemBoosts[entry.item.id] ?? 0))
-            }.sorted {
-                if $0.1 != $1.1 { return $0.1 > $1.1 }
-                return $0.0.title.localizedCaseInsensitiveCompare($1.0.title) == .orderedAscending
             }
+            ranked = Self.rank(scored, limit: limit)
         }
-        return limit.map { Array(ranked.prefix($0)) } ?? ranked
+        return ranked
     }
 
     /// Multi-token queries first use their complete words to avoid rescoring
@@ -67,6 +63,59 @@ public struct UnifiedSearchIndex: Sendable {
             if indices.isEmpty { return entries }
         }
         return indices.map { entries[$0] }
+    }
+
+    /// Keeps only the best requested results in a small worst-first heap. The
+    /// launcher asks for at most 80 rows, so this avoids sorting every match in
+    /// broad one-character searches while preserving the exact final ordering.
+    private static func rank(_ values: [(SearchItem, Double)], limit: Int?) -> [(item: SearchItem, score: Double)] {
+        guard let limit else { return values.sorted(by: isBetter) }
+        guard limit > 0 else { return [] }
+        var heap: [(SearchItem, Double)] = []
+        heap.reserveCapacity(min(limit, values.count))
+
+        for value in values {
+            if heap.count < limit {
+                heap.append(value)
+                siftWorstUp(&heap, from: heap.count - 1)
+            } else if let worst = heap.first, isBetter(value, worst) {
+                heap[0] = value
+                siftWorstDown(&heap, from: 0)
+            }
+        }
+        return heap.sorted(by: isBetter)
+    }
+
+    private static func isBetter(_ lhs: (SearchItem, Double), _ rhs: (SearchItem, Double)) -> Bool {
+        if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+        return lhs.0.title.localizedCaseInsensitiveCompare(rhs.0.title) == .orderedAscending
+    }
+
+    private static func isWorse(_ lhs: (SearchItem, Double), _ rhs: (SearchItem, Double)) -> Bool {
+        isBetter(rhs, lhs)
+    }
+
+    private static func siftWorstUp(_ heap: inout [(SearchItem, Double)], from start: Int) {
+        var child = start
+        while child > 0 {
+            let parent = (child - 1) / 2
+            guard isWorse(heap[child], heap[parent]) else { return }
+            heap.swapAt(child, parent)
+            child = parent
+        }
+    }
+
+    private static func siftWorstDown(_ heap: inout [(SearchItem, Double)], from start: Int) {
+        var parent = start
+        while true {
+            let left = parent * 2 + 1
+            guard left < heap.count else { return }
+            let right = left + 1
+            let worstChild = right < heap.count && isWorse(heap[right], heap[left]) ? right : left
+            guard isWorse(heap[worstChild], heap[parent]) else { return }
+            heap.swapAt(parent, worstChild)
+            parent = worstChild
+        }
     }
 
     private struct Entry: Sendable {

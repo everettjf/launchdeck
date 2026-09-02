@@ -1,7 +1,7 @@
 import Foundation
 import LaunchDeckCore
 
-enum SearchCatalogBuilder {
+nonisolated enum SearchCatalogBuilder {
     static func build(apps: [DiscoveredApp], indexedItems: [SearchItem],
                       approvedShortcuts: [String], recipes: [Recipe],
                       registry: ActionRegistry = .shared) -> [SearchItem] {

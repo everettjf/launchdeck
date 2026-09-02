@@ -106,6 +106,28 @@ for iteration in 0..<100 {
                             + Int64(qualified.components.attoseconds / 1_000_000_000))
 }
 
+let unifiedBurstQueries = ["b", "br", "bri", "brie", "brief", "brief 5", "brief 50",
+                           "benchmark", "benchmark app", "benchmark app 50"]
+let unifiedBurst = clock.measure {
+    for query in unifiedBurstQueries { _ = unifiedIndex.search(SearchQuery.parse(query), limit: 20) }
+}
+let qualifiedBurst = clock.measure {
+    for query in unifiedBurstQueries {
+        _ = unifiedIndex.search(SearchQuery.parse("kind:file ext:pdf \(query)"), limit: 20)
+    }
+}
+let rebuildFive = clock.measure {
+    for _ in 0..<5 { _ = UnifiedSearchIndex(items: unifiedItems) }
+}
+let memoryBeforeDurabilityMB = residentMemoryMB()
+let durability = clock.measure {
+    for iteration in 0..<100 {
+        let query = unifiedBurstQueries[iteration % unifiedBurstQueries.count]
+        _ = unifiedIndex.search(SearchQuery.parse(query), limit: 20)
+    }
+}
+let memoryAfterDurabilityMB = residentMemoryMB()
+
 let output: [String: Any] = [
     "apps": appCount,
     "cold_index_ms": milliseconds(cold),
@@ -120,6 +142,11 @@ let output: [String: Any] = [
     "unified_index_build_ms": milliseconds(unifiedBuild),
     "unified_search_p95_ms": p95Milliseconds(unifiedSamples),
     "qualified_search_p95_ms": p95Milliseconds(qualifiedSamples),
+    "unified_continuous_10_queries_ms": milliseconds(unifiedBurst),
+    "qualified_continuous_10_queries_ms": milliseconds(qualifiedBurst),
+    "unified_rebuild_5_ms": milliseconds(rebuildFive),
+    "durability_100_searches_ms": milliseconds(durability),
+    "post_durability_memory_growth_mb": max(0, memoryAfterDurabilityMB - memoryBeforeDurabilityMB),
     "resident_memory_mb": indexedMemoryMB,
     "index_memory_delta_mb": max(0, indexedMemoryMB - baselineMemoryMB),
     "query_p95_ms": Dictionary(uniqueKeysWithValues: querySamples.map { ($0.key, p95Milliseconds($0.value)) }),
