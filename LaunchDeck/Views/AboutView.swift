@@ -32,6 +32,7 @@ struct AboutView: View {
             Divider()
 
             VStack(spacing: 8) {
+                Link("Discord", destination: URL(string: "https://discord.gg/eGzEaP6TzR")!)
                 if let url = URL(string: "https://xnu.app/launchdeck/") {
                     Link("Support & Feedback", destination: url)
                 }
