@@ -172,6 +172,10 @@ struct FileOperationService {
         }
     }
 
+    func clearRecentDestinations() {
+        defaults.removeObject(forKey: recentDestinationKey)
+    }
+
     private func rememberDestination(_ directory: URL) {
         let paths = [directory.path] + recentDestinationPaths.filter { $0 != directory.path }
         defaults.set(Array(paths.prefix(8)), forKey: recentDestinationKey)

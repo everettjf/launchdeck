@@ -775,6 +775,10 @@ final class AppState: ObservableObject {
         recentSearchQueries = []
         clipboardStore.clear()
         recipeExecutionLogStore.clear()
+        workflowReceiptStore.clear()
+        workflowAITranscriptStore.clear()
+        fileOperationService.clearRecentDestinations()
+        instantSendObjects = []
         indexedItems = []
         rebuildUnifiedIndex()
         refreshLocalContent()

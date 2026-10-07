@@ -40,4 +40,21 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertThrowsError(try service.rename(source, to: "bad/name"))
         XCTAssertThrowsError(try service.rename(source, to: "existing"))
     }
+
+    func testClearRecentDestinationsForgetsEveryFolder() throws {
+        let suite = "FileOperationDestinations.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let destination = root.appendingPathComponent("Destination")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("a.txt")
+        try Data("a".utf8).write(to: file)
+        let service = FileOperationService(defaults: defaults)
+        _ = try service.move([file], to: destination)
+        XCTAssertFalse(service.recentDestinationPaths.isEmpty)
+        service.clearRecentDestinations()
+        XCTAssertTrue(service.recentDestinationPaths.isEmpty)
+    }
 }

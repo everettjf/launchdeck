@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var editingSnippet: Snippet?
     @State private var operationError: String?
     @State private var pendingClipboardEnable = false
+    @State private var isConfirmingPrivacyReset = false
     @State private var excludedClipboardBundleIdentifier = ""
     @State private var accessibilityStatus: AccessibilityPermissionStatus = .denied
 
@@ -242,11 +243,17 @@ struct SettingsView: View {
 
             Section {
                 Button("Clear All Local Behavioral Data", role: .destructive) {
-                    appState.clearPrivateHistory()
+                    isConfirmingPrivacyReset = true
+                }
+                .confirmationDialog("Clear all local behavioral data?", isPresented: $isConfirmingPrivacyReset) {
+                    Button("Clear All", role: .destructive) { appState.clearPrivateHistory() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(Self.privacyResetSummary)
                 }
             } header: { Text("Privacy") }
               footer: {
-                  Text("History stays on this Mac. Clearing it does not remove favorites, folders, or approved shortcuts.")
+                  Text("History stays on this Mac. \(Self.privacyResetSummary)")
                       .font(.caption)
               }
         }
@@ -319,6 +326,8 @@ struct SettingsView: View {
         case .unavailable(.unknown): return "Apple Intelligence is currently unavailable."
         }
     }
+
+    static let privacyResetSummary = "Clearing removes app launch history, recent documents, the local file index, search learning and recent queries, clipboard history, action history, recipe and workflow logs, AI request history, and recent move destinations. Favorites, folders, recipes, and approved shortcuts are kept."
 
     private var clipboardEnabledBinding: Binding<Bool> {
         Binding(
