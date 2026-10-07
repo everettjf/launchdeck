@@ -73,6 +73,7 @@ final class AppState: ObservableObject {
 
     private let favoritesStore: FavoritesStore
     private let recentsStore: RecentsStore
+    private let launchCountStore: LaunchCountStore
     private let localIndexStore: LocalIndexStore
     private let recentDocumentStore: RecentDocumentStore
     private let searchLearningStore: SearchLearningStore
@@ -117,7 +118,9 @@ final class AppState: ObservableObject {
         self.recentDocumentStore = recentDocumentStore
         self.searchLearningStore = SearchLearningStore()
         self.favorites = favoritesStore.load()
-        self.recents = recentsStore.load()
+        let loadedRecents = recentsStore.load()
+        self.recents = loadedRecents
+        self.launchCountStore = LaunchCountStore(seedingFrom: loadedRecents)
 
         let layoutController = LayoutController(layoutStore: layoutStore)
         let searchController = SemanticSearchController()
@@ -295,7 +298,7 @@ final class AppState: ObservableObject {
         withAnimation(.easeInOut(duration: 0.25)) {
             apps = discovered
         }
-        appsByIdentifier = Dictionary(uniqueKeysWithValues: discovered.map { ($0.identifier, $0) })
+        appsByIdentifier = Dictionary(discovered.map { ($0.identifier, $0) }, uniquingKeysWith: { first, _ in first })
         searchIndex = SearchIndex(apps: discovered)
         rebuildUnifiedIndex()
         layoutController.sync(with: discovered)
@@ -363,6 +366,7 @@ final class AppState: ObservableObject {
 
     private func updateRecents(with app: DiscoveredApp) {
         let updated = RecentLaunchList.recordingLaunch(of: app, in: recents, maxCount: recentsStore.maxCount)
+        launchCountStore.recordLaunch(of: app.identifier)
         recents = updated
         recentsStore.save(updated)
     }
@@ -502,7 +506,9 @@ final class AppState: ObservableObject {
             + DesktopSearchProvider.items(matching: searchableText,
                                           clipboardEnabled: preferences.clipboardEnabled,
                                           clipboardEntries: clipboardStore.entries,
-                                          snippets: snippetStore.snippets)
+                                          snippets: snippetStore.snippets,
+                                          // {clipboard} means the live clipboard, not the newest history entry.
+                                          clipboardText: NSPasteboard.general.string(forType: .string))
             + extensionStore.searchItems(matching: searchableText))
         let utilities = utilityCandidates.filter(parsed.matches)
         let index = unifiedSearchIndex
@@ -866,6 +872,8 @@ final class AppState: ObservableObject {
     func dismissActionError() { actionController.dismissError() }
     func clearPrivateHistory() {
         clearRecents()
+        launchCountStore.clear()
+        cachedCollections = nil
         actionController.clearHistory()
         try? recentDocumentStore.clear()
         try? localIndexStore.clear()
@@ -922,6 +930,7 @@ final class AppState: ObservableObject {
         let layout: [AppCollectionItem]
         let apps: [DiscoveredApp]
         let recents: [RecentLaunch]
+        let launchCounts: [String: Int]
     }
 
     private var cachedCollections: (key: CollectionOrderingKey, value: [AppCollectionItem])?
@@ -931,7 +940,8 @@ final class AppState: ObservableObject {
     func orderedCollections() -> [AppCollectionItem] {
         let key = CollectionOrderingKey(sortOption: preferences.sortOption, showHiddenApps: preferences.showHiddenApps,
                                         hiddenApps: preferences.hiddenApps, layout: layout, apps: apps,
-                                        recents: recents)
+                                        recents: recents,
+                                        launchCounts: preferences.sortOption == .mostLaunched ? launchCountStore.counts : [:])
         if let cachedCollections, cachedCollections.key == key { return cachedCollections.value }
         let value = computeOrderedCollections()
         cachedCollections = (key, value)
@@ -1080,7 +1090,7 @@ final class AppState: ObservableObject {
         case .alphabetical:
             return AppSorting.alphabetical(apps)
         case .mostLaunched:
-            return AppSorting.mostLaunched(apps, recents: recents)
+            return AppSorting.mostLaunched(apps, launchCounts: launchCountStore.counts)
         case .recentlyLaunched:
             return AppSorting.recentlyLaunched(apps, recents: recents)
         }

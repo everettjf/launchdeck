@@ -10,7 +10,12 @@ nonisolated struct LocalContentIndexer: Sendable {
 
     private static let ignoredDirectories: Set<String> = [
         ".git", ".build", ".swiftpm", "deriveddata", "node_modules", "pods", "carthage",
-        ".trash", "library"
+        ".trash"
+    ]
+    /// Only the user's own Library is skipped; a project folder that happens to be called
+    /// "Library" is still indexed.
+    private static let ignoredPaths: Set<String> = [
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library").standardizedFileURL.path
     ]
     private static let documentExtensions: Set<String> = [
         "md", "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pages", "numbers",
@@ -45,7 +50,8 @@ nonisolated struct LocalContentIndexer: Sendable {
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 let name = values?.name ?? url.lastPathComponent
                 let loweredName = name.lowercased()
-                if values?.isDirectory == true, Self.ignoredDirectories.contains(loweredName) {
+                if values?.isDirectory == true,
+                   Self.ignoredDirectories.contains(loweredName) || Self.ignoredPaths.contains(url.standardizedFileURL.path) {
                     enumerator.skipDescendants()
                     continue
                 }
@@ -86,6 +92,7 @@ nonisolated struct LocalContentIndexer: Sendable {
         if path == root.path {
             return isDirectory.boolValue ? item(url, kind: .folder, keywords: ["folder", "search root"]) : nil
         }
+        if Self.ignoredPaths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return nil }
         let relative = url.standardizedFileURL.pathComponents.dropFirst(root.pathComponents.count)
         guard relative.count <= maximumDepth,
               !relative.contains(where: { $0.hasPrefix(".") && $0 != "." }),

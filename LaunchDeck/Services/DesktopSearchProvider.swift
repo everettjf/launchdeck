@@ -5,7 +5,8 @@ enum DesktopSearchProvider {
     static func items(matching rawQuery: String,
                       clipboardEnabled: Bool,
                       clipboardEntries: [ClipboardEntry],
-                      snippets: [Snippet]) -> [SearchItem] {
+                      snippets: [Snippet],
+                      clipboardText: @autoclosure () -> String? = nil) -> [SearchItem] {
         let query = rawQuery.lowercased()
         var items: [SearchItem] = []
 
@@ -27,7 +28,7 @@ enum DesktopSearchProvider {
         }.map {
             SearchItem(id: "snippet:\($0.id)", kind: .snippet, title: $0.name, subtitle: $0.keyword,
                        keywords: ["snippet", "text", $0.keyword],
-                       target: .copyText($0.expanded(clipboard: clipboardEntries.first?.text)))
+                       target: .copyText($0.expanded(clipboard: clipboardText())))
         }
 
         items += DesktopWindowCommand.allCases.filter {

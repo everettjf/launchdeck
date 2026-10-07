@@ -26,7 +26,7 @@ final class RecipeStore: ObservableObject {
         if let message = imported.compactMap(RecipeValidation.error).first {
             throw RecipeStoreError.invalidRecipe(message)
         }
-        var merged = Dictionary(uniqueKeysWithValues: recipes.map { ($0.id, $0) })
+        var merged = Dictionary(recipes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         imported.forEach { merged[$0.id] = $0 }
         recipes = merged.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         persist()

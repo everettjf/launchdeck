@@ -77,4 +77,15 @@ final class LocalContentIndexerTests: XCTestCase {
         XCTAssertEqual(record.undoChange.removedPaths, ["/new/a.pdf", "/new/b.zip"])
         XCTAssertEqual(record.undoChange.addedURLs.map(\.path), ["/old/a.pdf"])
     }
+
+    func testFoldersNamedLibraryOutsideTheUserLibraryAreIndexed() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("LibraryName-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("Project/Library"), withIntermediateDirectories: true)
+        XCTAssertTrue(FileManager.default.createFile(atPath: root.appendingPathComponent("Project/Library/guide.md").path, contents: Data()))
+        defer { try? FileManager.default.removeItem(at: root) }
+        let items = LocalContentIndexer().index(configuration: .init(roots: [root]))
+        XCTAssertTrue(items.contains { $0.title == "guide" })
+        let userLibrary = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/x.md")
+        XCTAssertNil(LocalContentIndexer().item(for: userLibrary, roots: [FileManager.default.homeDirectoryForCurrentUser]))
+    }
 }

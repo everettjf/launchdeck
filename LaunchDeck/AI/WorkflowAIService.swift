@@ -245,7 +245,8 @@ actor WorkflowAIService {
                                   confidence: min(100, max(0, external.confidence)), notes: Array(external.notes.prefix(6)))
                 route = .externalProvider
             } catch {
-                guard modelPolicy != .externalProvider, prompt.count / 4 <= 3_200,
+                guard !(error is CancellationError), !Task.isCancelled,
+                      modelPolicy != .externalProvider, prompt.count / 4 <= 3_200,
                       case .available = SystemLanguageModel.default.availability else { throw error }
                 let session = LanguageModelSession(model: SystemLanguageModel.default, instructions: Self.instructions)
                 generated = try await session.respond(to: prompt, generating: GeneratedWorkflowAIResult.self).content

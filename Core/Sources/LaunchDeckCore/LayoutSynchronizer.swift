@@ -23,7 +23,7 @@ public enum LayoutSynchronizer {
         }
 
         let existingIdentifiers = Set(updatedLayout.flatMap { $0.containedAppIdentifiers })
-        let appsByIdentifier = Dictionary(uniqueKeysWithValues: apps.map { ($0.identifier, $0) })
+        let appsByIdentifier = Dictionary(apps.map { ($0.identifier, $0) }, uniquingKeysWith: { first, _ in first })
         let sortedMissing = knownIdentifiers
             .subtracting(existingIdentifiers)
             .compactMap { appsByIdentifier[$0] }

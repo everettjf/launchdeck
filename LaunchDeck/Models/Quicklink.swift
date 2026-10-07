@@ -14,7 +14,7 @@ nonisolated struct Quicklink: Codable, Hashable, Identifiable, Sendable {
     }
 
     func url(for query: String) -> URL? {
-        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .quicklinkQueryValueAllowed) else { return nil }
         let value = urlTemplate.replacingOccurrences(of: "{query}", with: encoded)
         guard let url = URL(string: value), ["https", "http"].contains(url.scheme?.lowercased() ?? "") else { return nil }
         return url
@@ -32,4 +32,11 @@ nonisolated enum QuicklinkValidation {
         }
         return nil
     }
+}
+
+extension CharacterSet {
+    /// Characters left unescaped in a search term placed inside a query string. Unlike
+    /// `.urlQueryAllowed`, this escapes `&`, `=`, `+`, `#` and `?`, which would otherwise split the
+    /// term into extra parameters or a fragment.
+    nonisolated static let quicklinkQueryValueAllowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+#?/"))
 }

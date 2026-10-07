@@ -61,7 +61,7 @@ final class ExtensionStore: ObservableObject {
                 case .quicklink:
                     guard let keyword = command.keyword?.lowercased(), query.hasPrefix(keyword + " ") else { return nil }
                     let term = String(rawQuery.dropFirst(keyword.count + 1))
-                    guard let encoded = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                    guard let encoded = term.addingPercentEncoding(withAllowedCharacters: .quicklinkQueryValueAllowed),
                           let url = URL(string: command.value.replacingOccurrences(of: "{query}", with: encoded)) else { return nil }
                     return SearchItem(id: "extension:\(manifest.id):\(command.id):\(term)", kind: .extensionCommand,
                                       title: command.name, subtitle: manifest.name, keywords: [keyword, manifest.name], target: .url(url))

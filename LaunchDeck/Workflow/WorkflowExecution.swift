@@ -194,7 +194,7 @@ final class WorkflowExecutionEngine: ObservableObject {
         var nodeReceipts: [WorkflowNodeReceipt] = []
         var outputs: [UUID: [String: WorkflowValue]] = [:]
         var undo: [WorkflowUndoOperation] = []
-        let nodes = Dictionary(uniqueKeysWithValues: workflow.nodes.map { ($0.id, $0) })
+        let nodes = Dictionary(workflow.nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var runtimeVariables = Dictionary(workflow.variables.map { ($0.name, $0.defaultValue) }, uniquingKeysWith: { first, _ in first })
         // Model output is untrusted: track where it flows so it cannot silently become a path or URL.
         var aiDerivedVariables = Set<String>()

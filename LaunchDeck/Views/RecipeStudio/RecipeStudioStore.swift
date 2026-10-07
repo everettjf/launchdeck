@@ -34,7 +34,7 @@ final class RecipeStudioStore {
         snapshots.removeAll(); redoSnapshots.removeAll()
         workflow = recipe.resolvedWorkflow
         selectedNodeID = nil; selectedEdgeID = nil
-        runVariableValues = Dictionary(uniqueKeysWithValues: workflow.variables.map { ($0.name, $0.defaultValue) })
+        runVariableValues = Dictionary(workflow.variables.map { ($0.name, $0.defaultValue) }, uniquingKeysWith: { first, _ in first })
         message = recipe.workflow == nil ? "Legacy Recipe migrated to Schema v2. Save to keep the upgrade." : nil
     }
 

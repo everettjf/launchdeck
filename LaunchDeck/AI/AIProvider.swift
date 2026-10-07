@@ -62,12 +62,16 @@ nonisolated final class KeychainAIProviderSecretStore: AIProviderSecretStoring, 
         return String(data: data, encoding: .utf8)
     }
 
+    /// Updates in place so a failed write can never leave the user without their existing key.
     func save(_ secret: String) throws {
-        try remove()
-        var query = baseQuery
-        query[kSecValueData as String] = Data(secret.utf8)
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(query as CFDictionary, nil)
+        let attributes: [String: Any] = [kSecValueData as String: Data(secret.utf8),
+                                         kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+        let status = SecItemUpdate(baseQuery as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            let added = SecItemAdd(baseQuery.merging(attributes) { _, new in new } as CFDictionary, nil)
+            guard added == errSecSuccess else { throw KeychainError(added) }
+            return
+        }
         guard status == errSecSuccess else { throw KeychainError(status) }
     }
 
@@ -139,12 +143,24 @@ final class AIProviderSettingsStore {
 }
 
 nonisolated enum AIProviderClient {
+    /// The provider's own error message (both OpenAI-compatible and Anthropic APIs use
+    /// `{"error": {"message": ...}}`), shortened for display. The API key is never echoed back.
+    nonisolated static func errorDetail(from data: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            let text = String(decoding: data.prefix(200), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : text
+        }
+        let message = (object["error"] as? [String: Any])?["message"] as? String ?? object["error"] as? String
+        return message.map { String($0.prefix(200)) }
+    }
+
     enum ClientError: LocalizedError {
-        case invalidConfiguration(String), HTTP(Int), invalidResponse
+        case invalidConfiguration(String), HTTP(Int, String?), invalidResponse
         var errorDescription: String? {
             switch self {
             case .invalidConfiguration(let message): message
-            case .HTTP(let code): "Provider request failed (HTTP \(code))."
+            case .HTTP(let code, let detail?): "Provider request failed (HTTP \(code)): \(detail)"
+            case .HTTP(let code, nil): "Provider request failed (HTTP \(code))."
             case .invalidResponse: "Provider returned an invalid response."
             }
         }
@@ -177,7 +193,7 @@ nonisolated enum AIProviderClient {
         }
         let (data, response) = try await session.data(for: request)
         guard let HTTP = response as? HTTPURLResponse else { throw ClientError.invalidResponse }
-        guard (200..<300).contains(HTTP.statusCode) else { throw ClientError.HTTP(HTTP.statusCode) }
+        guard (200..<300).contains(HTTP.statusCode) else { throw ClientError.HTTP(HTTP.statusCode, Self.errorDetail(from: data)) }
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ClientError.invalidResponse }
         let content: String? = switch config.kind {
         case .openAICompatible:

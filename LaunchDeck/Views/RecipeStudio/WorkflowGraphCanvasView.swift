@@ -114,7 +114,7 @@ struct WorkflowGraphCanvasView: View {
     }
 
     private func drawEdges(context: inout GraphicsContext) {
-        let nodes = Dictionary(uniqueKeysWithValues: studio.workflow.nodes.map { ($0.id, $0) })
+        let nodes = Dictionary(studio.workflow.nodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for edge in studio.workflow.edges {
             guard let source = nodes[edge.sourceNodeID], let target = nodes[edge.targetNodeID] else { continue }
             let start = CGPoint(x: source.position.x + nodeSize.width, y: source.position.y + nodeSize.height / 2)

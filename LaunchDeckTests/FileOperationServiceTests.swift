@@ -77,4 +77,18 @@ final class FileOperationServiceTests: XCTestCase {
         } catch is CancellationError {}
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
+
+    func testCompressingSameBaseNamesDoesNotCollide() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("Zip-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pdf = root.appendingPathComponent("a.pdf"), docx = root.appendingPathComponent("a.docx")
+        try Data("1".utf8).write(to: pdf)
+        try Data("2".utf8).write(to: docx)
+        let service = FileOperationService(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let undo = try await service.compressWithUndo([pdf, docx])
+        XCTAssertEqual(undo.createdURLs.map(\.lastPathComponent), ["a.pdf.zip", "a.docx.zip"])
+        let again = try await service.compress(pdf)
+        XCTAssertEqual(again.lastPathComponent, "a.pdf 2.zip")
+    }
 }

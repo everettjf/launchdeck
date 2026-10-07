@@ -327,7 +327,7 @@ struct SettingsView: View {
         }
     }
 
-    static let privacyResetSummary = "Clearing removes app launch history, recent documents, the local file index, search learning and recent queries, clipboard history, action history, recipe and workflow logs, AI request history, and recent move destinations. Favorites, folders, recipes, and approved shortcuts are kept."
+    static let privacyResetSummary = "Clearing removes app launch history and launch counts, recent documents, the local file index, search learning and recent queries, clipboard history, action history, recipe and workflow logs, AI request history, and recent move destinations. Favorites, folders, recipes, and approved shortcuts are kept."
 
     private var clipboardEnabledBinding: Binding<Bool> {
         Binding(
@@ -721,7 +721,7 @@ struct RecipeRunView: View {
     init(recipe: Recipe, onRun: @escaping ([String: String]) -> Void) {
         self.recipe = recipe
         self.onRun = onRun
-        _values = State(initialValue: Dictionary(uniqueKeysWithValues: recipe.variables.map { ($0.name, $0.defaultValue) }))
+        _values = State(initialValue: Dictionary(recipe.variables.map { ($0.name, $0.defaultValue) }, uniquingKeysWith: { first, _ in first }))
     }
 
     var body: some View {

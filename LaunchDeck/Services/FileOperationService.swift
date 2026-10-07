@@ -127,8 +127,7 @@ struct FileOperationService {
 
     func compress(_ source: URL) async throws -> URL {
         try requireSource(source)
-        let destination = source.deletingPathExtension().appendingPathExtension("zip")
-        try requireAbsent(destination)
+        let destination = archiveDestination(for: source)
         let result: ProcessRunner.Result
         do {
             result = try await ProcessRunner.run(executable: "/usr/bin/ditto", arguments: [
@@ -143,6 +142,20 @@ struct FileOperationService {
             throw FileOperationError.commandFailed(result.standardError)
         }
         return destination
+    }
+
+    /// Finder-style archive names: "a.pdf" → "a.pdf.zip", then "a.pdf 2.zip" if taken, so
+    /// compressing "a.pdf" and "a.docx" together no longer collides on "a.zip".
+    func archiveDestination(for source: URL) -> URL {
+        let directory = source.deletingLastPathComponent()
+        let name = source.lastPathComponent
+        var candidate = directory.appendingPathComponent(name + ".zip")
+        var counter = 2
+        while fileManager.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(name) \(counter).zip")
+            counter += 1
+        }
+        return candidate
     }
 
     func compressWithUndo(_ sources: [URL]) async throws -> FileUndoRecord {

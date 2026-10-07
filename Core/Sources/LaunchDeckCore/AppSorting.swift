@@ -9,11 +9,15 @@ public enum AppSorting {
     }
 
     public static func mostLaunched(_ apps: [DiscoveredApp], recents: [RecentLaunch]) -> [String] {
-        let recentsLookup = Dictionary(uniqueKeysWithValues: recents.map { ($0.identifier, $0) })
-        return apps
+        mostLaunched(apps, launchCounts: Dictionary(recents.map { ($0.identifier, $0.launchCount) },
+                                                    uniquingKeysWith: { first, _ in first }))
+    }
+
+    public static func mostLaunched(_ apps: [DiscoveredApp], launchCounts: [String: Int]) -> [String] {
+        apps
             .sorted { first, second in
-                let firstCount = recentsLookup[first.identifier]?.launchCount ?? 0
-                let secondCount = recentsLookup[second.identifier]?.launchCount ?? 0
+                let firstCount = launchCounts[first.identifier] ?? 0
+                let secondCount = launchCounts[second.identifier] ?? 0
                 if firstCount == secondCount {
                     return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
                 }
@@ -23,7 +27,7 @@ public enum AppSorting {
     }
 
     public static func recentlyLaunched(_ apps: [DiscoveredApp], recents: [RecentLaunch]) -> [String] {
-        let recentsLookup = Dictionary(uniqueKeysWithValues: recents.map { ($0.identifier, $0) })
+        let recentsLookup = Dictionary(recents.map { ($0.identifier, $0) }, uniquingKeysWith: { first, _ in first })
         return apps
             .sorted { first, second in
                 let firstDate = recentsLookup[first.identifier]?.lastLaunch

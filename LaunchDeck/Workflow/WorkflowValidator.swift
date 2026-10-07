@@ -33,6 +33,9 @@ nonisolated enum WorkflowValidator {
         if workflow.nodes.count > maximumNodes {
             issues.append(.init("workflow.too-large", "A workflow can contain at most \(maximumNodes) blocks."))
         }
+        if Set(workflow.nodes.map(\.id)).count != workflow.nodes.count {
+            issues.append(.init("workflow.duplicate-nodes", "Each block must have a unique identifier."))
+        }
         let variableNames = workflow.variables.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
         if variableNames.contains(where: \.isEmpty) || Set(variableNames).count != variableNames.count {
             issues.append(.init("workflow.variables", "Workflow variable names must be non-empty and unique."))
@@ -112,7 +115,7 @@ nonisolated enum WorkflowValidator {
 
     static func topologicalOrder(for workflow: WorkflowDefinition) -> [UUID]? {
         let IDs = Set(workflow.nodes.map(\.id))
-        var incoming = Dictionary(uniqueKeysWithValues: IDs.map { ($0, 0) })
+        var incoming = Dictionary(IDs.map { ($0, 0) }, uniquingKeysWith: { first, _ in first })
         var outgoing: [UUID: [UUID]] = [:]
         for edge in workflow.edges where IDs.contains(edge.sourceNodeID) && IDs.contains(edge.targetNodeID) {
             incoming[edge.targetNodeID, default: 0] += 1
@@ -157,7 +160,7 @@ nonisolated enum WorkflowGraphEditor {
             depth[id] = incoming[id, default: []].map { depth[$0.sourceNodeID, default: -1] + 1 }.max() ?? 0
         }
         let groups = Dictionary(grouping: order) { depth[$0, default: 0] }
-        let indices = Dictionary(uniqueKeysWithValues: result.nodes.enumerated().map { ($0.element.id, $0.offset) })
+        let indices = Dictionary(result.nodes.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         for (level, IDs) in groups {
             for (column, id) in IDs.enumerated() {
                 guard let index = indices[id] else { continue }

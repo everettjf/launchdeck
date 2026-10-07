@@ -49,7 +49,7 @@ nonisolated enum RecipeVariableResolution: Equatable, Sendable {
 
 nonisolated enum RecipeVariableResolver {
     static func resolve(steps: [RecipeStep], variables: [RecipeVariable], values: [String: String]) -> RecipeVariableResolution {
-        let defaults = Dictionary(uniqueKeysWithValues: variables.map { ($0.name, $0.defaultValue) })
+        let defaults = Dictionary(variables.map { ($0.name, $0.defaultValue) }, uniquingKeysWith: { first, _ in first })
         let outputNames = Set(steps.compactMap(\.outputVariable))
         let required = Set(steps.flatMap { placeholders(in: strings(in: $0.operation).joined(separator: " ")) })
             .subtracting(outputNames)

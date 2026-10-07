@@ -175,10 +175,10 @@ public struct SearchIndex: Sendable {
         let normalizedQuery = Self.normalize(query)
         guard !normalizedQuery.isEmpty else { return [] }
 
-        let recentPositions = Dictionary(uniqueKeysWithValues: recents.enumerated().map { ($0.element.identifier, $0.offset) })
-        let layoutPositions = Dictionary(uniqueKeysWithValues: layout.enumerated().flatMap { index, item in
+        let recentPositions = Dictionary(recents.enumerated().map { ($0.element.identifier, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        let layoutPositions = Dictionary(layout.enumerated().flatMap { index, item in
             item.containedAppIdentifiers.map { ($0, index) }
-        })
+        }, uniquingKeysWith: { first, _ in first })
 
         let ranked = entries.compactMap { entry -> (DiscoveredApp, Double)? in
             guard let textScore = entry.matchScore(for: normalizedQuery) else { return nil }

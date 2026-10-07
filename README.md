@@ -115,7 +115,8 @@ Application indexes, organization, recipes, launch history, recent documents, an
 | Recent documents | Up to 30 entries | Unified behavioral-data reset |
 | Action history | Latest 50 actions | Unified behavioral-data reset |
 | Recipe execution logs | Latest 50 executions | Recipe log clear or unified behavioral-data reset |
-| App launch history | Latest 12 launched apps (drives Recent and "Most Launched") | Recents clear or unified behavioral-data reset |
+| App launch history | Latest 12 launched apps (drives Recent and "Recently Launched") | Recents clear or unified behavioral-data reset |
+| App launch counts | Per-app count, dropped after 180 days without a launch (drives "Most Launched") | Unified behavioral-data reset |
 | Search learning and recent queries | Selections for the 200 most recent queries (10 items each); 30 recent queries | Unified behavioral-data reset |
 | Workflow receipts | Latest 50 workflow runs | Unified behavioral-data reset |
 | AI request history | Latest 100 metadata records | AI history clear or unified behavioral-data reset |

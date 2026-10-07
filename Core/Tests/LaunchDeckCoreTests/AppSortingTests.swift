@@ -84,4 +84,15 @@ struct AppSortingTests {
         #expect(updated.count == 3)
         #expect(updated.map(\.identifier) == ["new", "app0", "app1"])
     }
+
+    @Test("Most launched uses stored counts and tolerates duplicate recents")
+    func mostLaunchedWithCounts() {
+        let apps = [makeApp(identifier: "a", name: "Alpha"), makeApp(identifier: "b", name: "Bravo")]
+        #expect(AppSorting.mostLaunched(apps, launchCounts: ["b": 500, "a": 1]) == ["b", "a"])
+        let now = Date()
+        let duplicated = [makeRecent(identifier: "a", launchCount: 3, lastLaunch: now),
+                          makeRecent(identifier: "a", launchCount: 1, lastLaunch: now)]
+        #expect(AppSorting.mostLaunched(apps, recents: duplicated) == ["a", "b"])
+        #expect(AppSorting.recentlyLaunched(apps, recents: duplicated).first == "a")
+    }
 }

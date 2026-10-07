@@ -419,3 +419,14 @@ final class ObjectActionSafetyTests: XCTestCase {
         XCTAssertEqual(step.summary, "Open a.pdf, https://example.com, b.txt and 1 more")
     }
 }
+
+final class WorkflowDuplicateIdentifierTests: XCTestCase {
+    func testDuplicateNodeIdentifiersAreRejectedWithoutCrashing() {
+        let id = UUID()
+        let workflow = WorkflowDefinition(name: "Dup", nodes: [
+            WorkflowNode(id: id, kindIdentifier: "logic.delay"), WorkflowNode(id: id, kindIdentifier: "logic.delay")
+        ])
+        XCTAssertTrue(WorkflowValidator.validate(workflow).contains { $0.id == "workflow.duplicate-nodes" })
+        XCTAssertNotNil(WorkflowValidator.topologicalOrder(for: workflow) ?? [])
+    }
+}

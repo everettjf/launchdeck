@@ -86,6 +86,9 @@ private enum ArithmeticEvaluator {
     private struct Parser {
         let characters: [Character]
         var index = 0
+        /// Pasted input with thousands of "(" would otherwise recurse until the stack overflows.
+        static let maximumDepth = 64
+        var depth = 0
         var isAtEnd: Bool { index == characters.count }
         mutating func expression() -> Double? {
             guard var value = term() else { return nil }
@@ -107,7 +110,10 @@ private enum ArithmeticEvaluator {
         }
         mutating func factor() -> Double? {
             if index < characters.count, characters[index] == "(" {
+                guard depth < Self.maximumDepth else { return nil }
                 index += 1
+                depth += 1
+                defer { depth -= 1 }
                 guard let value = expression(), index < characters.count, characters[index] == ")" else { return nil }
                 index += 1
                 return value
