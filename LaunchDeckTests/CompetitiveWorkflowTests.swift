@@ -9,14 +9,14 @@ final class CompetitiveWorkflowTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suiteName: String!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("LaunchDeckCompetitive-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         suiteName = "LaunchDeckCompetitive-\(UUID())"
         defaults = UserDefaults(suiteName: suiteName)!
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         try? FileManager.default.removeItem(at: root)
         defaults.removePersistentDomain(forName: suiteName)
     }

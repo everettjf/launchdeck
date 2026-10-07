@@ -2,6 +2,7 @@ import LaunchDeckCore
 import Testing
 @testable import LaunchDeck
 
+@MainActor
 struct SearchSelectionTests {
     private func item(_ id: String) -> SearchItem {
         SearchItem(id: id, kind: .application, title: id,

@@ -2,6 +2,7 @@ import XCTest
 import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 final class LocalContentIndexerTests: XCTestCase {
     func testFindsProjectsAndDocumentsWhileSkippingDependencies() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("LaunchDeckIndexer-\(UUID().uuidString)")

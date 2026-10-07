@@ -1,6 +1,8 @@
 import XCTest
+import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 final class WorkflowSchemaV2Tests: XCTestCase {
     func testV1MigrationPreservesEveryOperationAndStableIDs() throws {
         let steps = [
@@ -85,6 +87,7 @@ final class WorkflowSchemaV2Tests: XCTestCase {
     }
 }
 
+@MainActor
 final class WorkflowModelRouterTests: XCTestCase {
     func testLocalOnlyNeverRoutesToProvider() {
         XCTAssertEqual(WorkflowModelRouter.decide(estimatedTokens: 10_000, modelPolicy: .automatic,
@@ -108,6 +111,7 @@ final class WorkflowModelRouterTests: XCTestCase {
     }
 }
 
+@MainActor
 final class AIProviderConfigurationTests: XCTestCase {
     func testRemoteEndpointRequiresHTTPS() {
         var configuration = AIProviderConfiguration()
@@ -284,6 +288,7 @@ final class WorkflowExecutionEngineTests: XCTestCase {
     }
 }
 
+@MainActor
 final class WorkflowRunApprovalTests: XCTestCase {
     private func approvalWorkflow() -> WorkflowDefinition {
         let approval = WorkflowNode(kindIdentifier: "logic.approval", configuration: ["approved": .boolean(true)])
@@ -341,6 +346,7 @@ final class WorkflowRunApprovalTests: XCTestCase {
     }
 }
 
+@MainActor
 final class WorkflowAISafetyTests: XCTestCase {
     final class AIProducerExecutor: WorkflowNodeExecuting {
         let generated: String
@@ -420,6 +426,7 @@ final class ObjectActionSafetyTests: XCTestCase {
     }
 }
 
+@MainActor
 final class WorkflowDuplicateIdentifierTests: XCTestCase {
     func testDuplicateNodeIdentifiersAreRejectedWithoutCrashing() {
         let id = UUID()

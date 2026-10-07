@@ -3,6 +3,7 @@ import LaunchDeckCore
 import Testing
 @testable import LaunchDeck
 
+@MainActor
 struct LocalIndexStoreTests {
     private func temporaryFile(_ name: String = UUID().uuidString) -> URL {
         FileManager.default.temporaryDirectory

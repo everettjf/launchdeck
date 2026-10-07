@@ -1,7 +1,9 @@
 import AppKit
 import Testing
+import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 struct StatusItemIconTests {
     @Test func iconUsesAStandardTransparentTemplateImage() {
         let icon = StatusItemIcon.make(accessibilityDescription: "LaunchDeck")

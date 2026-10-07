@@ -2,6 +2,7 @@ import XCTest
 import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 final class IntentCandidateSelectorTests: XCTestCase {
     func testSemanticCandidatesIncludeFallbackWhenTextDoesNotMatch() {
         let app = SearchItem(id: "application:editor", kind: .application, title: "Pixelmator",

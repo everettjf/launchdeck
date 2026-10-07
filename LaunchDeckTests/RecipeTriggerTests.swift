@@ -1,6 +1,8 @@
 import XCTest
+import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 final class RecipeTriggerTests: XCTestCase {
     func testAcceptsOnlyLaunchDeckRecipeURLs() {
         let id = UUID()

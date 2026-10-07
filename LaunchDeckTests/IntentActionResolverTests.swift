@@ -2,6 +2,7 @@ import XCTest
 import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 final class IntentActionResolverTests: XCTestCase {
     func testInfersSafeParametersFromConcreteTarget() {
         let item = SearchItem(id: "project:/tmp/deck", kind: .project, title: "Deck",

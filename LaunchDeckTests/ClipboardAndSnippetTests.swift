@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import LaunchDeckCore
 @testable import LaunchDeck
 
 @MainActor

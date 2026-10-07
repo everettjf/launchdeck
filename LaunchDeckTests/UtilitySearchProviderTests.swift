@@ -1,6 +1,8 @@
 import XCTest
+import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 final class UtilitySearchProviderTests: XCTestCase {
     func testArithmeticPrecedenceAndInvalidInput() {
         XCTAssertEqual(UtilitySearchProvider.results(for: "2 + 3 * 4").first?.title, "14")

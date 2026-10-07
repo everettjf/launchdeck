@@ -80,8 +80,10 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        SWIFT_VERSION: "5.0"
-        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
 
 # Explicit scheme: the app target shares the project name "LaunchDeck", which
 # makes XcodeGen's auto-scheme generation skip it.

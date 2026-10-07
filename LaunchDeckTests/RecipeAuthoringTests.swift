@@ -1,7 +1,9 @@
 import Foundation
 import Testing
+import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 struct RecipeAuthoringTests {
     @Test func resolvesVariablesAcrossTypedStepsAndPreservesStepIdentity() {
         let steps: [RecipeStep] = [.openProject(path: "{{projectPath}}"), .openTerminal(directory: "{{projectPath}}")]

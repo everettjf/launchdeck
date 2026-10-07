@@ -2,6 +2,7 @@ import XCTest
 import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 final class SearchCatalogBuilderTests: XCTestCase {
     func testCatalogContainsEveryRequiredSearchKind() {
         let app = DiscoveredApp(name: "Editor", bundleIdentifier: "com.test.editor", path: "/Editor.app",

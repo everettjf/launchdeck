@@ -1,6 +1,8 @@
 import XCTest
+import LaunchDeckCore
 @testable import LaunchDeck
 
+@MainActor
 final class ApplicationDirectoryMonitorTests: XCTestCase {
     func testStartStopAndDeallocationAreSafeFromAnyThread() {
         for _ in 0..<20 {

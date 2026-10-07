@@ -2,6 +2,7 @@ import LaunchDeckCore
 import XCTest
 @testable import LaunchDeck
 
+@MainActor
 final class SearchContextActionTests: XCTestCase {
     func testFileActionsAreContextualAndStable() {
         let file = SearchItem(id: "file:/tmp/a", kind: .file, title: "A", target: .file(path: "/tmp/a"))
