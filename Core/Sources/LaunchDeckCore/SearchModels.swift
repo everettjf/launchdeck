@@ -172,16 +172,17 @@ public struct SearchIndex: Sendable {
                        recents: [RecentLaunch] = [],
                        layout: [AppCollectionItem] = [],
                        limit: Int? = nil) -> [(app: DiscoveredApp, score: Double)] {
-        let normalizedQuery = Self.normalize(query)
-        guard !normalizedQuery.isEmpty else { return [] }
+        let query = FuzzyQuery(query)
+        guard !query.isEmpty else { return [] }
 
         let recentPositions = Dictionary(recents.enumerated().map { ($0.element.identifier, $0.offset) }, uniquingKeysWith: { first, _ in first })
         let layoutPositions = Dictionary(layout.enumerated().flatMap { index, item in
             item.containedAppIdentifiers.map { ($0, index) }
         }, uniquingKeysWith: { first, _ in first })
 
-        let ranked = entries.compactMap { entry -> (DiscoveredApp, Double)? in
-            guard let textScore = entry.matchScore(for: normalizedQuery) else { return nil }
+        let scored = entries.indices.compactMap { index -> (index: Int, score: Double)? in
+            let entry = entries[index]
+            guard let textScore = entry.field.score(query) else { return nil }
             var score = textScore
             if favorites.contains(entry.app.identifier) { score += 0.20 }
             if let position = recentPositions[entry.app.identifier] {
@@ -191,126 +192,24 @@ public struct SearchIndex: Sendable {
                 score += max(0, 0.08 - Double(position) * 0.003)
             }
             if !entry.app.isSystemApp { score += 0.01 }
-            return (entry.app, score)
+            return (index, score)
         }
-        .sorted {
-            if $0.1 != $1.1 { return $0.1 > $1.1 }
-            return $0.0.name.localizedCaseInsensitiveCompare($1.0.name) == .orderedAscending
+        return TopRanking.best(scored, limit: limit) { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            return TopRanking.titleOrder(entries[lhs.index].field.title, entries[rhs.index].field.title)
+                ?? (lhs.index < rhs.index)
         }
-
-        if let limit { return Array(ranked.prefix(limit)) }
-        return ranked
+        .map { (entries[$0.index].app, $0.score) }
     }
 
     private struct Entry: Sendable {
         let app: DiscoveredApp
-        let name: String
-        let words: [String]
-        let secondary: String
-        let initials: String
+        let field: FuzzyField
 
         init(_ app: DiscoveredApp) {
             self.app = app
-            name = SearchIndex.normalize(app.name)
-            let all = ([app.name, app.bundleIdentifier, app.developer, app.category]
-                .compactMap { $0 } + app.keywords).joined(separator: " ")
-            words = SearchIndex.words(in: all)
-            secondary = SearchIndex.normalize(all)
-            initials = words.compactMap(\.first).map(String.init).joined()
+            field = FuzzyField(title: app.name,
+                               metadata: [app.bundleIdentifier, app.developer, app.category].compactMap { $0 } + app.keywords)
         }
-
-        func matchScore(for query: String) -> Double? {
-            if name == query { return 1.00 }
-            if name.hasPrefix(query) { return 0.92 - lengthPenalty(query, in: name) }
-            if words.contains(query) { return 0.88 }
-            if words.contains(where: { $0.hasPrefix(query) }) { return 0.82 }
-            if initials.hasPrefix(query.replacingOccurrences(of: " ", with: "")) { return 0.79 }
-            if let range = name.range(of: query) {
-                return 0.72 - Double(name.distance(from: name.startIndex, to: range.lowerBound)) * 0.003
-            }
-            if let subsequence = subsequenceScore(query, in: name) { return 0.58 + subsequence * 0.12 }
-            if isLikelyTypo(query, of: name) { return 0.54 }
-            if secondary.contains(query) { return 0.45 }
-            if let word = words.first(where: { isLikelyTypo(query, of: $0) }) {
-                return 0.43 - lengthPenalty(query, in: word)
-            }
-            return nil
-        }
-
-        private func lengthPenalty(_ query: String, in value: String) -> Double {
-            min(Double(max(0, value.count - query.count)) * 0.002, 0.08)
-        }
-
-        private func subsequenceScore(_ query: String, in value: String) -> Double? {
-            var queryIndex = query.startIndex
-            var matchedIndices: [String.Index] = []
-            for index in value.indices where queryIndex < query.endIndex {
-                if value[index] == query[queryIndex] {
-                    matchedIndices.append(index)
-                    query.formIndex(after: &queryIndex)
-                }
-            }
-            guard queryIndex == query.endIndex, let first = matchedIndices.first, let last = matchedIndices.last else { return nil }
-            let span = value.distance(from: first, to: last) + 1
-            return Double(query.count) / Double(max(span, query.count))
-        }
-
-        private func editDistance(_ lhs: String, _ rhs: String) -> Int {
-            var left = Array(lhs)
-            var right = Array(rhs)
-            while !left.isEmpty, !right.isEmpty, left.first == right.first {
-                left.removeFirst()
-                right.removeFirst()
-            }
-            while !left.isEmpty, !right.isEmpty, left.last == right.last {
-                left.removeLast()
-                right.removeLast()
-            }
-            if left.isEmpty { return right.count }
-            if right.isEmpty { return left.count }
-            var previousPrevious: [Int]?
-            var previous = Array(0...right.count)
-            for (leftIndex, leftCharacter) in left.enumerated() {
-                var current = [leftIndex + 1]
-                for (rightIndex, rightCharacter) in right.enumerated() {
-                    var distance = min(
-                        current[rightIndex] + 1,
-                        previous[rightIndex + 1] + 1,
-                        previous[rightIndex] + (leftCharacter == rightCharacter ? 0 : 1)
-                    )
-                    if leftIndex > 0,
-                       rightIndex > 0,
-                       leftCharacter == right[rightIndex - 1],
-                       left[leftIndex - 1] == rightCharacter,
-                       let previousPrevious {
-                        distance = min(distance, previousPrevious[rightIndex - 1] + 1)
-                    }
-                    current.append(distance)
-                }
-                previousPrevious = previous
-                previous = current
-            }
-            return previous[right.count]
-        }
-
-        private func typoTolerance(_ length: Int) -> Int { length >= 8 ? 2 : 1 }
-
-        private func isLikelyTypo(_ query: String, of value: String) -> Bool {
-            guard query.count >= 4 else { return false }
-            let tolerance = typoTolerance(query.count)
-            guard abs(query.count - value.count) <= tolerance,
-                  query.first == value.first else { return false }
-            return editDistance(query, value) <= tolerance
-        }
-    }
-
-    private static func normalize(_ value: String) -> String {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func words(in value: String) -> [String] {
-        normalize(value).split { !$0.isLetter && !$0.isNumber }.map(String.init)
     }
 }

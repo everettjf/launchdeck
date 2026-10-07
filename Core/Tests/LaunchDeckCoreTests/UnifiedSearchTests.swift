@@ -63,4 +63,18 @@ struct UnifiedSearchTests {
         let result = index.search(SearchQuery.parse("kind:file ext:pdf quarterly brief 50"))
         #expect(result.map(\.item.id) == ["pdf"])
     }
+
+    @Test("Both indexes share one matcher, including transposed-letter typos")
+    func sharedMatcherHandlesTranspositions() {
+        let safari = DiscoveredApp(name: "Safari", bundleIdentifier: "com.apple.Safari", path: "/Applications/Safari.app",
+                                   category: nil, bundleVersion: nil, developer: nil, isSystemApp: true, keywords: [])
+        let item = SearchItem(id: "application:com.apple.Safari", kind: .application, title: "Safari",
+                              target: .application(identifier: "com.apple.Safari", path: safari.path))
+        let appScore = SearchIndex(apps: [safari]).search("saafri").first?.score
+        let unifiedScore = UnifiedSearchIndex(items: [item]).search("saafri").first?.score
+        #expect(unifiedScore != nil)
+        // The app index adds 0 for system apps and no other boosts here, so text scores must agree.
+        #expect(appScore == unifiedScore)
+        #expect(FuzzyField.editDistance("saafri", "safari") == 1)
+    }
 }
