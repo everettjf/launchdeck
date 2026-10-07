@@ -7,29 +7,22 @@ import SwiftUI
 
 private nonisolated let appStateLogger = Logger(subsystem: "com.everettjf.launchdeck", category: "AppState")
 
-private nonisolated struct UnifiedIndexSnapshot: Sendable {
-    let catalog: [String: SearchItem]
-    let index: UnifiedSearchIndex
-
-    init(items: [SearchItem]) {
-        catalog = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        index = UnifiedSearchIndex(items: items)
-    }
-}
-
-/// Orchestrates the app: discovery, favorites, recents, and launch actions.
-/// Layout mutations live in LayoutController, AI search in SemanticSearchController,
-/// and pure ranking/sorting/merge rules in LaunchDeckCore.
+/// The facade views observe. It owns application discovery and wires the stores and
+/// coordinators together; the work itself lives elsewhere:
+/// - `AppState+Library`: favorites, hidden apps, launching, recents, grid ordering, folders
+/// - `AppState+Search`: local, unified and intent search queries
+/// - `AppState+ObjectActions`: object chains, context actions, file operations
+/// - `LocalContentCoordinator`, `UnifiedIndexCoordinator`, `RecipeRunCoordinator`
+/// - `LayoutController`, `SemanticSearchController`, `ActionController`
+/// - pure ranking, sorting and merge rules in LaunchDeckCore
 @MainActor
 final class AppState: ObservableObject {
     @Published private(set) var apps: [DiscoveredApp] = []
     @Published var searchQuery: String = ""
-    @Published private(set) var favorites: Set<String>
-    @Published private(set) var recents: [RecentLaunch]
-    @Published private(set) var indexedItems: [SearchItem] = []
-    @Published private(set) var recentSearchQueries: [String] = []
-    @Published private(set) var instantSendObjects: [LaunchObject] = []
-    @Published private(set) var searchCatalogRevision = 0
+    @Published var favorites: Set<String>
+    @Published var recents: [RecentLaunch]
+    @Published var recentSearchQueries: [String] = []
+    @Published var instantSendObjects: [LaunchObject] = []
 
     let layoutController: LayoutController
     let searchController: SemanticSearchController
@@ -43,13 +36,20 @@ final class AppState: ObservableObject {
     let AIProviderSettings: AIProviderSettingsStore
     let workflowAIService: WorkflowAIService
     let workflowExecutionEngine: WorkflowExecutionEngine
-    private let fileOperationService = FileOperationService()
-    private let objectActionPerformer = ObjectActionPerformer()
-    private let objectUndoManager = UndoManager()
+    let fileOperationService = FileOperationService()
+    let objectActionPerformer = ObjectActionPerformer()
+    let objectUndoManager = UndoManager()
     let snippetStore: SnippetStore
     let extensionStore: ExtensionStore
 
+    /// The local file index (indexed roots and recent documents).
+    let localContent: LocalContentCoordinator
+    let unifiedIndex = UnifiedIndexCoordinator()
+    private let recipeRunner: RecipeRunCoordinator
+
     var totalAppCount: Int { apps.count }
+    var indexedItems: [SearchItem] { localContent.items }
+    var searchCatalogRevision: Int { unifiedIndex.revision }
 
     // MARK: - Forwarded state from controllers
 
@@ -71,29 +71,21 @@ final class AppState: ObservableObject {
     var canUndoObjectAction: Bool { objectUndoManager.canUndo }
     var objectUndoActionName: String { objectUndoManager.undoActionName }
 
-    private let favoritesStore: FavoritesStore
-    private let recentsStore: RecentsStore
-    private let launchCountStore: LaunchCountStore
-    private let localIndexStore: LocalIndexStore
-    private let recentDocumentStore: RecentDocumentStore
-    private let searchLearningStore: SearchLearningStore
+    let favoritesStore: FavoritesStore
+    let recentsStore: RecentsStore
+    let launchCountStore: LaunchCountStore
+    let searchLearningStore: SearchLearningStore
     private var clipboardMonitor: ClipboardMonitor?
     private nonisolated let discoveryService: ApplicationDiscoveryService
-    private let preferences: AppPreferences
+    let preferences: AppPreferences
     private let focusPublisher = PassthroughSubject<Void, Never>()
 
-    private var appsByIdentifier: [String: DiscoveredApp] = [:]
-    private var searchIndex = SearchIndex(apps: [])
-    private var unifiedSearchIndex = UnifiedSearchIndex(items: [])
-    private var searchItemsByIdentifier: [String: SearchItem] = [:]
+    var appsByIdentifier: [String: DiscoveredApp] = [:]
+    var searchIndex = SearchIndex(apps: [])
     private var cancellables = Set<AnyCancellable>()
     private var directoryMonitor: ApplicationDirectoryMonitor?
-    private var localIndexGeneration = 0
     private var discoveryGeneration = 0
-    private var unifiedIndexGeneration = 0
     private var discoveryTask: Task<Void, Never>?
-    private var localIndexTask: Task<Void, Never>?
-    private var unifiedIndexTask: Task<Void, Never>?
 
     var searchFocusPublisher: AnyPublisher<Void, Never> {
         focusPublisher.eraseToAnyPublisher()
@@ -114,8 +106,8 @@ final class AppState: ObservableObject {
         self.favoritesStore = favoritesStore
         self.recentsStore = recentsStore
         self.discoveryService = discoveryService
-        self.localIndexStore = localIndexStore
-        self.recentDocumentStore = recentDocumentStore
+        self.localContent = LocalContentCoordinator(store: localIndexStore, recentDocumentStore: recentDocumentStore,
+                                                    rootPaths: { [preferences] in preferences.indexedRootPaths })
         self.searchLearningStore = SearchLearningStore()
         self.favorites = favoritesStore.load()
         let loadedRecents = recentsStore.load()
@@ -156,6 +148,9 @@ final class AppState: ObservableObject {
         self.AIProviderSettings = AIProviderSettings
         self.workflowAIService = workflowAIService
         self.workflowExecutionEngine = workflowExecutionEngine
+        self.recipeRunner = RecipeRunCoordinator(workflowExecutionEngine: workflowExecutionEngine,
+                                                 actionController: actionController,
+                                                 approvedShortcuts: { [preferences] in Set(preferences.approvedShortcuts) })
         self.recentSearchQueries = searchLearningStore.snapshot.recentQueries
         workflowNodeExecutor.instantSendProvider = { [weak self] in self?.instantSendObjects ?? [] }
         workflowNodeExecutor.approvedShortcutsProvider = { [weak self] in Set(self?.preferences.approvedShortcuts ?? []) }
@@ -179,6 +174,9 @@ final class AppState: ObservableObject {
         clipboardStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &cancellables)
         snippetStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &cancellables)
         extensionStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &cancellables)
+        localContent.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &cancellables)
+        unifiedIndex.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }.store(in: &cancellables)
+        localContent.itemsChanged = { [weak self] in self?.rebuildUnifiedIndex() }
         recipeStore.$recipes
             .dropFirst()
             .sink { [weak self] recipes in self?.rebuildUnifiedIndex(recipes: recipes) }
@@ -192,8 +190,8 @@ final class AppState: ObservableObject {
             guard let self else { return [] }
             let preferredFallbackIDs = self.allApps().map { "application:\($0.identifier)" }
                 + self.indexedItems.map(\.id)
-            let index = self.unifiedSearchIndex
-            let catalog = self.searchItemsByIdentifier
+            let index = self.unifiedIndex.index
+            let catalog = self.unifiedIndex.catalog
             return await Task.detached(priority: .userInitiated) {
                 IntentCandidateSelector.select(query: query, index: index, catalog: catalog,
                                                preferredFallbackIdentifiers: preferredFallbackIDs)
@@ -207,7 +205,7 @@ final class AppState: ObservableObject {
             self.updateRecents(with: app)
         }
         actionController.documentOpened = { [weak self] path in
-            self?.recordRecentDocument(path)
+            self?.localContent.recordRecentDocument(path)
         }
         searchController.initialize()
         clipboardMonitor = ClipboardMonitor(store: clipboardStore, preferences: preferences)
@@ -295,7 +293,7 @@ final class AppState: ObservableObject {
     private func handleDiscoveredApps(_ discovered: [DiscoveredApp], generation: Int,
                                       elapsed: Duration) {
         guard generation == discoveryGeneration else { return }
-        appStateLogger.info("Application discovery completed count=\(discovered.count) duration=\(Self.milliseconds(elapsed), format: .fixed(precision: 1))ms")
+        appStateLogger.info("Application discovery completed count=\(discovered.count) duration=\(elapsed.milliseconds, format: .fixed(precision: 1))ms")
         withAnimation(.easeInOut(duration: 0.25)) {
             apps = discovered
         }
@@ -305,464 +303,18 @@ final class AppState: ObservableObject {
         layoutController.sync(with: discovered)
     }
 
-    // MARK: - Favorites & hidden apps
-
-    func toggleFavorite(for app: DiscoveredApp) {
-        if favorites.contains(app.identifier) {
-            favorites.remove(app.identifier)
-        } else {
-            favorites.insert(app.identifier)
-        }
-        favoritesStore.save(favorites)
-        objectWillChange.send()
-    }
-
-    func isFavorite(_ app: DiscoveredApp) -> Bool {
-        favorites.contains(app.identifier)
-    }
-
-    func hideApp(_ app: DiscoveredApp) {
-        preferences.hiddenApps.insert(app.identifier)
-        objectWillChange.send()
-    }
-
-    func unhideApp(_ app: DiscoveredApp) {
-        preferences.hiddenApps.remove(app.identifier)
-        objectWillChange.send()
-    }
-
-    func isHidden(_ app: DiscoveredApp) -> Bool {
-        preferences.hiddenApps.contains(app.identifier)
-    }
-
-    // MARK: - Launching
-
-    func launch(_ app: DiscoveredApp) {
-        actionController.request(.openApplication(identifier: app.identifier, name: app.name))
-    }
-
-    private func presentLaunchError(_ error: Error, app: DiscoveredApp) {
-        let alert = NSAlert()
-        alert.messageText = "Unable to open \(app.name)"
-        alert.informativeText = error.localizedDescription
-        alert.alertStyle = .warning
-        alert.runModal()
-    }
-
-    func revealInFinder(_ app: DiscoveredApp) {
-        actionController.request(.revealApplication(identifier: app.identifier, name: app.name))
-    }
-
-    func copyPathToClipboard(_ app: DiscoveredApp) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(app.path, forType: .string)
-    }
-
-    // MARK: - Recents
-
-    func removeFromRecents(_ app: DiscoveredApp) {
-        recents.removeAll { $0.identifier == app.identifier }
-        recentsStore.save(recents)
-    }
-
-    private func updateRecents(with app: DiscoveredApp) {
-        let updated = RecentLaunchList.recordingLaunch(of: app, in: recents, maxCount: recentsStore.maxCount)
-        launchCountStore.recordLaunch(of: app.identifier)
-        recents = updated
-        recentsStore.save(updated)
-    }
-
-    func clearRecents() {
-        recents = []
-        recentsStore.save([])
-    }
-
-    // MARK: - Search
+    // MARK: - Search focus, local content, actions and privacy
 
     func postSearchFocusRequest() {
         focusPublisher.send()
     }
 
-    func receiveInstantSend(_ objects: [LaunchObject]) {
-        instantSendObjects = objects
-    }
-
-    func clearInstantSend() { instantSendObjects = [] }
-
-    func objectTargets(for action: ObjectAction) -> [LaunchObject] {
-        switch action {
-        case .move:
-            let recent = fileOperationService.recentDestinationPaths.map {
-                LaunchObject(kind: .folder, title: URL(fileURLWithPath: $0).lastPathComponent, value: $0)
-            }
-            let indexed = indexedItems.compactMap(LaunchObject.init(searchItem:)).filter { $0.kind == .folder }
-            var seen = Set<String>()
-            return (recent + indexed).filter { seen.insert($0.value).inserted }
-        case .openWith:
-            return allApps().map {
-                LaunchObject(kind: .application, title: $0.name, value: $0.path, applicationIdentifier: $0.identifier)
-            }
-        default: return []
-        }
-    }
-
-    func perform(_ action: ObjectAction, sources: [LaunchObject], target: LaunchObject?) {
-        guard !sources.isEmpty else { return }
-        if action == .saveAsRecipe {
-            saveObjectChainAsRecipe(sources: sources, target: target)
-            return
-        }
-        guard let kind = recipeKind(for: action) else { return }
-        let clipboardEntries = sources.compactMap { source -> ClipboardEntry? in
-            guard source.kind == .clipboard, let id = UUID(uuidString: source.value) else { return nil }
-            return clipboardStore.entries.first { $0.id == id }
-        }
-        if clipboardEntries.count == sources.count, let first = clipboardEntries.first, [.copy, .paste].contains(action) {
-            if action == .paste { clipboardStore.paste(first) } else { clipboardStore.writeToPasteboard(first) }
-            return
-        }
-        let targetValue: String?
-        if action == .paste { targetValue = sources.first?.applicationIdentifier }
-        else { targetValue = target?.value }
-        Task { [weak self, objectActionPerformer] in
-            do {
-                let undo = try await objectActionPerformer.execute(kind: kind, sources: sources.map(\.value), target: targetValue)
-                guard let self else { return }
-                if let undo {
-                    self.objectUndoManager.registerUndo(withTarget: self) { state in state.undoObjectAction(undo) }
-                    self.objectUndoManager.setActionName(undo.title)
-                }
-                self.applyLocalContentChange(undo?.change ?? .none)
-            } catch { self?.actionController.presentError(error.localizedDescription) }
-        }
-    }
-
-    func undoLastObjectAction() {
-        guard objectUndoManager.canUndo else { return }
-        objectUndoManager.undo()
-    }
-
-    private func undoObjectAction(_ record: FileUndoRecord) {
-        do { try fileOperationService.undo(record); applyLocalContentChange(record.undoChange) }
-        catch { actionController.presentError("Undo failed: \(error.localizedDescription)") }
-    }
-
-    private func saveObjectChainAsRecipe(sources: [LaunchObject], target: LaunchObject?) {
-        guard let name = prompt(title: "Save Action Chain", message: "Recipe name:", value: "Object Workflow") else { return }
-        // The saved default is an open chain; the navigator replaces this with its selected action when supplied.
-        let recipe = Recipe(name: name, steps: [.objectAction(.open, sources: sources.map(\.value), target: target?.value)])
-        do { try recipeStore.save(recipe) }
-        catch { actionController.presentError(error.localizedDescription) }
-    }
-
-    func saveObjectChainAsRecipe(action: ObjectAction, sources: [LaunchObject], target: LaunchObject?) {
-        guard let kind = recipeKind(for: action),
-              let name = prompt(title: "Save Action Chain", message: "Recipe name:", value: "\(action.title) Workflow") else { return }
-        let savedTarget = action == .paste ? (target?.value ?? sources.first?.applicationIdentifier) : target?.value
-        let recipe = Recipe(name: name, steps: [.objectAction(kind, sources: sources.map(\.value), target: savedTarget)])
-        do { try recipeStore.save(recipe) }
-        catch { actionController.presentError(error.localizedDescription) }
-    }
-
-    private func recipeKind(for action: ObjectAction) -> RecipeStep.ObjectActionKind? {
-        switch action {
-        case .open: .open
-        case .reveal: .reveal
-        case .copy: .copy
-        case .paste: .paste
-        case .openWith: .openWith
-        case .move: .move
-        case .duplicate: .duplicate
-        case .compress: .compress
-        case .trash: .trash
-        case .saveAsRecipe: nil
-        }
-    }
-
-    // Called when search query changes - handles semantic search state
-    func appsMatchingSearch() -> [DiscoveredApp] {
-        // This is now a pure function without side effects
-        guard !searchQuery.isEmpty else {
-            return allApps()
-        }
-
-        // Check if using AI search
-        let useAISearch = searchQuery.hasPrefix("/")
-        let actualQuery = useAISearch ? String(searchQuery.dropFirst()) : searchQuery
-
-        // If only "/" is entered, return empty
-        if useAISearch && actualQuery.isEmpty {
-            return []
-        }
-
-        return localRankedResults(for: actualQuery).map(\.app)
-    }
-
-    /// Ranks the unified index off the main actor; the small utility, clipboard and extension
-    /// providers stay on the main actor because they read main-actor stores.
-    func searchItems(matching query: String, limit: Int = 80) async -> [SearchItem] {
-        let parsed = SearchQuery.parse(query)
-        let searchableText = parsed.text
-        let utilityCandidates = searchableText.isEmpty ? [] : (UtilitySearchProvider.results(for: searchableText, quicklinks: quicklinkStore.quicklinks)
-            + DesktopSearchProvider.items(matching: searchableText,
-                                          clipboardEnabled: preferences.clipboardEnabled,
-                                          clipboardEntries: clipboardStore.entries,
-                                          snippets: snippetStore.snippets,
-                                          // {clipboard} means the live clipboard, not the newest history entry.
-                                          clipboardText: NSPasteboard.general.string(forType: .string))
-            + extensionStore.searchItems(matching: searchableText))
-        let utilities = utilityCandidates.filter(parsed.matches)
-        let index = unifiedSearchIndex
-        let itemBoosts = searchLearningStore.boosts(for: parsed.text)
-        let ranked = await Task.detached(priority: .userInitiated) {
-            index.search(parsed, kindBoosts: [.application: 0.04, .project: 0.03],
-                         itemBoosts: itemBoosts, limit: limit).map(\.item)
-        }.value
-        return Array((utilities + ranked).prefix(limit))
-    }
-
-    func searchItem(identifier: String) -> SearchItem? { searchItemsByIdentifier[identifier] }
-
-    func contextualActions(for item: SearchItem) -> [SearchContextAction] {
-        SearchContextActionCatalog.actions(for: item)
-    }
-
-    func perform(_ contextAction: SearchContextAction, on item: SearchItem) {
-        switch contextAction {
-        case .open:
-            perform(item)
-        case .reveal:
-            reveal(item)
-        case .quickLook:
-            guard let path = item.fileSystemPath else { return }
-            QuickLookCoordinator.shared.preview(path: path)
-        case .copyPath:
-            guard let path = item.fileSystemPath else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(path, forType: .string)
-        case .openTerminal:
-            guard let path = item.fileSystemPath else { return }
-            var isDirectory: ObjCBool = false
-            let directory = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
-                ? path : URL(fileURLWithPath: path).deletingLastPathComponent().path
-            requestAction(.openTerminal(directory: directory))
-        case .rename:
-            guard let url = item.fileSystemURL,
-                  let name = prompt(title: "Rename \(url.lastPathComponent)", message: "Enter a new name:", value: url.lastPathComponent) else { return }
-            runFileOperation { [fileOperationService] in
-                let renamed = try fileOperationService.rename(url, to: name)
-                return LocalContentChange(removedPaths: [url.path], addedURLs: [renamed])
-            }
-        case .move:
-            guard let url = item.fileSystemURL else { return }
-            let panel = NSOpenPanel()
-            panel.canChooseDirectories = true
-            panel.canChooseFiles = false
-            panel.allowsMultipleSelection = false
-            panel.prompt = "Move Here"
-            if let recent = fileOperationService.recentDestinationPaths.first {
-                panel.directoryURL = URL(fileURLWithPath: recent)
-            }
-            guard panel.runModal() == .OK, let destination = panel.url else { return }
-            runFileOperation { [fileOperationService] in try fileOperationService.moveWithUndo([url], to: destination).change }
-        case .duplicate:
-            guard let url = item.fileSystemURL else { return }
-            runFileOperation { [fileOperationService] in LocalContentChange(addedURLs: [try fileOperationService.duplicate(url)]) }
-        case .compress:
-            guard let url = item.fileSystemURL else { return }
-            runFileOperation { [fileOperationService] in LocalContentChange(addedURLs: [try await fileOperationService.compress(url)]) }
-        case .tag:
-            guard let url = item.fileSystemURL,
-                  let value = prompt(title: "Set Finder Tags", message: "Enter comma-separated tags:", value: "") else { return }
-            runFileOperation { [fileOperationService] in
-                try fileOperationService.setTags(value.split(separator: ",").map(String.init), on: [url])
-                return .none
-            }
-        case .trash:
-            guard let url = item.fileSystemURL else { return }
-            let alert = NSAlert()
-            alert.messageText = "Move “\(url.lastPathComponent)” to Trash?"
-            alert.informativeText = "The item can be recovered from the Trash."
-            alert.addButton(withTitle: "Move to Trash")
-            alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            runFileOperation { [fileOperationService] in try fileOperationService.moveToTrash([url]).change }
-        case .paste:
-            guard case .clipboardEntry(let identifier) = item.target,
-                  let entry = clipboardStore.entries.first(where: { $0.id == identifier }) else { return }
-            clipboardStore.paste(entry)
-        }
-    }
-
-    private func runFileOperation(_ operation: @escaping () async throws -> LocalContentChange) {
-        Task { [weak self] in
-            do {
-                let change = try await operation()
-                self?.applyLocalContentChange(change)
-            } catch {
-                let alert = NSAlert(error: error)
-                alert.runModal()
-            }
-        }
-    }
-
-    private func prompt(title: String, message: String, value: String) -> String? {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        let field = NSTextField(string: value)
-        field.frame = CGRect(x: 0, y: 0, width: 360, height: 24)
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Continue")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        return field.stringValue
-    }
-
-    private func reveal(_ item: SearchItem) {
-        switch item.target {
-        case .application(let identifier, _):
-            guard let app = appsByIdentifier[identifier] else { return }
-            requestAction(.revealApplication(identifier: identifier, name: app.name))
-        default:
-            guard let path = item.fileSystemPath else { return }
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-        }
-    }
-
-    func perform(_ item: SearchItem) {
-        let learningQuery = searchQuery.hasPrefix("/") ? String(searchQuery.dropFirst()) : searchQuery
-        searchLearningStore.record(query: learningQuery, itemID: item.id)
-        recentSearchQueries = searchLearningStore.snapshot.recentQueries
-        if let recommendation = intentResults.first(where: { $0.targetIdentifier == item.id }) {
-            let appName: String?
-            if case .application(let identifier, _) = item.target { appName = appsByIdentifier[identifier]?.name }
-            else { appName = nil }
-            switch IntentActionResolver.resolve(recommendation, target: item, applicationName: appName,
-                                                installedApplications: appsByIdentifier.mapValues { $0.name },
-                                                recipes: recipeStore.recipes) {
-            case .action(let action):
-                requestAction(action)
-                return
-            case .missingParameters(let missing):
-                actionController.presentError("This action needs: \(missing.joined(separator: ", ")). Refine the intent or choose a concrete target.")
-                return
-            case .unresolved:
-                actionController.presentError("The suggested action could not be resolved safely.")
-                return
-            }
-        }
-        let action: LaunchDeckAction?
-        switch item.target {
-        case .application(let identifier, _):
-            action = appsByIdentifier[identifier].map { .openApplication(identifier: identifier, name: $0.name) }
-        case .file(let path): action = .openFile(path: path, applicationIdentifier: nil, applicationName: nil)
-        case .folder(let path), .project(let path): action = .openProject(path: path)
-        case .registeredAction(let identifier):
-            if identifier == "open.terminal" {
-                action = .openTerminal(directory: FileManager.default.homeDirectoryForCurrentUser.path)
-            } else {
-                action = nil
-                actionController.presentError("“\(identifier)” needs a concrete target. Use intent search or select a file, project, app, or recipe.")
-            }
-        case .systemSetting(let identifier):
-            action = SystemSettingsDestination(rawValue: identifier).map { .openSystemSettings(destination: $0) }
-        case .shortcut(let name): action = .runShortcut(name: name)
-        case .recipe(let identifier):
-            if let recipe = recipeStore.recipes.first(where: { $0.id == identifier }) { runRecipe(recipe) }
-            action = nil
-        case .copyText(let value):
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(value, forType: .string)
-            action = nil
-        case .url(let url): action = .openURL(url)
-        case .systemCommand(let identifier):
-            if let command = DesktopWindowCommand(rawValue: identifier),
-               let error = DesktopWindowController.perform(command) { actionController.presentError(error) }
-            action = nil
-        case .clipboardEntry(let identifier):
-            if let entry = clipboardStore.entries.first(where: { $0.id == identifier }) { clipboardStore.writeToPasteboard(entry) }
-            action = nil
-        }
-        if let action { requestAction(action) }
-    }
-
     func refreshLocalContent(rootPaths: [String]? = nil) {
-        localIndexGeneration += 1
-        let requestGeneration = localIndexGeneration
-        localIndexTask?.cancel()
-        let rootPaths = rootPaths ?? preferences.indexedRootPaths
-        let roots = rootPaths.map(URL.init(fileURLWithPath:))
-        let localIndexStore = localIndexStore
-        let recentDocumentStore = recentDocumentStore
-        localIndexTask = Task.detached(priority: .utility) { [weak self] in
-            if let cached = localIndexStore.load(expectedRootPaths: rootPaths) {
-                guard !Task.isCancelled else { return }
-                await self?.applyIndexedItems(cached.items, generation: requestGeneration, source: "cache")
-            }
-
-            let startedAt = ContinuousClock.now
-            let storedRecentURLs = recentDocumentStore.load().map { URL(fileURLWithPath: $0.path) }
-            let items = LocalContentIndexer().index(configuration: .init(roots: roots),
-                                                    recentURLs: storedRecentURLs,
-                                                    isCancelled: { Task.isCancelled })
-            guard !Task.isCancelled else { return }
-            do {
-                try localIndexStore.save(LocalIndexSnapshot(rootPaths: rootPaths, items: items))
-            } catch {
-                appStateLogger.error("Local index cache save failed: \(error.localizedDescription, privacy: .public)")
-            }
-            guard !Task.isCancelled else { return }
-            await self?.applyIndexedItems(items, generation: requestGeneration, source: "scan",
-                                          elapsed: startedAt.duration(to: .now))
-        }
+        localContent.refresh(rootPaths: rootPaths)
     }
 
-    /// Updates the local index in place after a file operation. Only a new or moved directory,
-    /// whose contents a single-path update cannot cover, falls back to a full rescan.
     func applyLocalContentChange(_ change: LocalContentChange) {
-        guard change != .none else { return }
-        let roots = preferences.indexedRootPaths.map(URL.init(fileURLWithPath:))
-        let addsDirectory = change.addedURLs.contains { url in
-            var isDirectory: ObjCBool = false
-            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
-                && !["xcodeproj", "xcworkspace", "playground"].contains(url.pathExtension.lowercased())
-                && roots.contains { url.path.hasPrefix($0.path + "/") }
-        }
-        if addsDirectory {
-            refreshLocalContent()
-            return
-        }
-        let removed = Set(change.removedPaths + change.addedURLs.map(\.path))
-        indexedItems.removeAll { item in
-            guard let path = item.fileSystemPath else { return false }
-            return removed.contains(path) || removed.contains { path.hasPrefix($0 + "/") }
-        }
-        let indexer = LocalContentIndexer()
-        indexedItems += change.addedURLs.compactMap { indexer.item(for: $0, roots: roots) }
-        rebuildUnifiedIndex()
-        persistLocalIndex()
-    }
-
-    private func persistLocalIndex() {
-        let snapshot = LocalIndexSnapshot(rootPaths: preferences.indexedRootPaths, items: indexedItems)
-        let localIndexStore = localIndexStore
-        Task.detached(priority: .utility) {
-            do { try localIndexStore.save(snapshot) }
-            catch { appStateLogger.error("Local index cache save failed: \(error.localizedDescription, privacy: .public)") }
-        }
-    }
-
-    private func applyIndexedItems(_ items: [SearchItem], generation: Int, source: String,
-                                   elapsed: Duration? = nil) {
-        guard generation == localIndexGeneration else { return }
-        indexedItems = items
-        rebuildUnifiedIndex()
-        if let elapsed {
-            appStateLogger.info("Local index \(source, privacy: .public) completed count=\(items.count) duration=\(Self.milliseconds(elapsed), format: .fixed(precision: 1))ms")
-        } else {
-            appStateLogger.info("Local index cache restored count=\(items.count)")
-        }
+        localContent.apply(change)
     }
 
     func addIndexedRoot(_ url: URL) {
@@ -772,28 +324,6 @@ final class AppState: ObservableObject {
     }
 
     func removeIndexedRoot(_ path: String) { preferences.indexedRootPaths.removeAll { $0 == path } }
-
-    func intentReason(for app: DiscoveredApp) -> String? {
-        intentResults.first { $0.targetIdentifier == "application:\(app.identifier)" }?.reason
-    }
-
-    func intentDetail(for item: SearchItem) -> String? {
-        guard let result = intentResults.first(where: { $0.targetIdentifier == item.id }) else { return nil }
-        let percent = Int((result.confidence * 100).rounded())
-        let actionName = ActionRegistry.shared.descriptors.first { $0.id == result.actionIdentifier }?.title
-            ?? result.actionIdentifier
-        let appName: String?
-        if case .application(let identifier, _) = item.target { appName = appsByIdentifier[identifier]?.name }
-        else { appName = nil }
-        let resolution = IntentActionResolver.resolve(result, target: item, applicationName: appName,
-                                                      installedApplications: appsByIdentifier.mapValues { $0.name },
-                                                      recipes: recipeStore.recipes)
-        let missing: String
-        if case .missingParameters(let values) = resolution { missing = " · Needs \(values.joined(separator: ", "))" }
-        else if case .unresolved = resolution { missing = " · Unresolved" }
-        else { missing = "" }
-        return "\(result.reason) · \(percent)% · \(actionName)\(missing)"
-    }
 
     func requestAction(_ action: LaunchDeckAction) {
         // Workflow recipes have no legacy steps; every entry point (search, intents, deep links,
@@ -806,68 +336,11 @@ final class AppState: ObservableObject {
         actionController.request(action, approvedShortcuts: Set(preferences.approvedShortcuts))
     }
 
-    /// Runs a saved recipe. Missing variable values are asked for; workflow recipes go through
-    /// the workflow engine with a dry run, mutation confirmation and per-run approvals.
-    func runRecipe(_ recipe: Recipe, values providedValues: [String: String]? = nil) {
-        var values = providedValues ?? [:]
-        if providedValues == nil {
-            for variable in recipe.resolvedWorkflow.variables {
-                guard let value = prompt(title: "Run \(recipe.name)",
-                                         message: "Value for \(variable.name) (\(variable.valueType.rawValue)):",
-                                         value: variable.defaultValue) else { return }
-                values[variable.name] = value
-            }
-        }
-        guard recipe.workflow != nil else {
-            switch RecipeVariableResolver.resolve(steps: recipe.steps, variables: recipe.variables, values: values) {
-            case .resolved(let steps):
-                actionController.request(.runRecipe(identifier: recipe.id, name: recipe.name, steps: steps),
-                                         approvedShortcuts: Set(preferences.approvedShortcuts))
-            case .missing(let names):
-                actionController.presentError("Enter values for: \(names.joined(separator: ", ")).")
-            case .invalid(let errors):
-                actionController.presentError(errors.joined(separator: "\n"))
-            }
-            return
-        }
-        var workflow = recipe.resolvedWorkflow
-        let preview = workflowExecutionEngine.dryRun(workflow)
-        guard preview.isReady else {
-            actionController.presentError(preview.issues.first(where: { $0.severity == .error })?.message ?? "The workflow is invalid.")
-            return
-        }
-        if workflow.policy.requiresDryRunBeforeMutation, preview.requiresConfirmation {
-            let alert = NSAlert()
-            alert.messageText = "Run “\(workflow.name)”?"
-            alert.informativeText = "Mutations: \(preview.mutations.joined(separator: ", "))\nTools: \(preview.requiredTools.sorted().joined(separator: ", "))"
-            alert.addButton(withTitle: "Run")
-            alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-        }
-        let approvalSteps = workflow.approvalStepCount
-        let providerBlocks = workflow.providerApprovalNodeCount
-        if approvalSteps > 0 || providerBlocks > 0 {
-            var reasons: [String] = []
-            if approvalSteps > 0 { reasons.append("\(approvalSteps) approval step\(approvalSteps == 1 ? "" : "s")") }
-            if providerBlocks > 0 {
-                reasons.append("\(providerBlocks) AI block\(providerBlocks == 1 ? "" : "s") that may send input to your external AI provider")
-            }
-            let alert = NSAlert()
-            alert.messageText = "Approve “\(workflow.name)” for this run?"
-            alert.informativeText = "This workflow includes \(reasons.joined(separator: " and ")). Approval applies to this run only."
-            alert.addButton(withTitle: "Approve and Run")
-            alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-            workflow = workflow.approvedForThisRun()
-        }
-        Task { [weak self, workflow, values] in
-            guard let self else { return }
-            let receipt = await self.workflowExecutionEngine.run(workflow, variableValues: values)
-            if !receipt.succeeded {
-                self.actionController.presentError(receipt.nodes.last?.error ?? "The workflow could not run.")
-            }
-        }
+    /// Runs a saved recipe; see RecipeRunCoordinator.
+    func runRecipe(_ recipe: Recipe, values: [String: String]? = nil) {
+        recipeRunner.run(recipe, values: values)
     }
+
     func confirmPendingAction() { actionController.confirmPending() }
     func cancelPendingAction() { actionController.cancelPending() }
     func dismissActionError() { actionController.dismissError() }
@@ -876,8 +349,6 @@ final class AppState: ObservableObject {
         launchCountStore.clear()
         cachedCollections = nil
         actionController.clearHistory()
-        try? recentDocumentStore.clear()
-        try? localIndexStore.clear()
         searchLearningStore.clear()
         recentSearchQueries = []
         clipboardStore.clear()
@@ -886,45 +357,10 @@ final class AppState: ObservableObject {
         workflowAITranscriptStore.clear()
         fileOperationService.clearRecentDestinations()
         instantSendObjects = []
-        indexedItems = []
-        rebuildUnifiedIndex()
-        refreshLocalContent()
+        localContent.clearHistory()
     }
 
-    // MARK: - App queries
-
-    func favoriteApps() -> [DiscoveredApp] {
-        orderedIdentifiers().compactMap { identifier in
-            guard favorites.contains(identifier) else { return nil }
-            guard let app = appsByIdentifier[identifier] else { return nil }
-            if !preferences.showHiddenApps && preferences.hiddenApps.contains(identifier) {
-                return nil
-            }
-            return app
-        }
-    }
-
-    func recentApps() -> [DiscoveredApp] {
-        recents.compactMap { launch in
-            guard let app = appsByIdentifier[launch.identifier] else { return nil }
-            if !preferences.showHiddenApps && preferences.hiddenApps.contains(launch.identifier) {
-                return nil
-            }
-            return app
-        }
-    }
-
-    func allApps() -> [DiscoveredApp] {
-        orderedIdentifiers().compactMap { identifier in
-            guard let app = appsByIdentifier[identifier] else { return nil }
-            if !preferences.showHiddenApps && preferences.hiddenApps.contains(identifier) {
-                return nil
-            }
-            return app
-        }
-    }
-
-    private struct CollectionOrderingKey: Equatable {
+    struct CollectionOrderingKey: Equatable {
         let sortOption: AppPreferences.SortOption
         let showHiddenApps: Bool
         let hiddenApps: Set<String>
@@ -934,170 +370,13 @@ final class AppState: ObservableObject {
         let launchCounts: [String: Int]
     }
 
-    private var cachedCollections: (key: CollectionOrderingKey, value: [AppCollectionItem])?
-
-    /// The grid reads this several times per render and AppState republishes changes from
-    /// every sub-store, so the sorted result is reused until one of its inputs changes.
-    func orderedCollections() -> [AppCollectionItem] {
-        let key = CollectionOrderingKey(sortOption: preferences.sortOption, showHiddenApps: preferences.showHiddenApps,
-                                        hiddenApps: preferences.hiddenApps, layout: layout, apps: apps,
-                                        recents: recents,
-                                        launchCounts: preferences.sortOption == .mostLaunched ? launchCountStore.counts : [:])
-        if let cachedCollections, cachedCollections.key == key { return cachedCollections.value }
-        let value = computeOrderedCollections()
-        cachedCollections = (key, value)
-        return value
-    }
-
-    private func computeOrderedCollections() -> [AppCollectionItem] {
-        let collections: [AppCollectionItem]
-        switch preferences.sortOption {
-        case .custom:
-            collections = layout
-        case .alphabetical, .mostLaunched, .recentlyLaunched:
-            let identifiers = sortedAppIdentifiers(for: preferences.sortOption)
-            collections = identifiers.map { AppCollectionItem.app($0) }
-        }
-
-        // Filter hidden apps if showHiddenApps is false
-        if preferences.showHiddenApps {
-            return collections
-        } else {
-            return collections.compactMap { item in
-                switch item.kind {
-                case .app:
-                    guard let identifier = item.appIdentifier else { return nil }
-                    if preferences.hiddenApps.contains(identifier) {
-                        return nil
-                    }
-                    return item
-                case .folder:
-                    guard var folder = item.folder else { return nil }
-                    // Filter hidden apps from folder
-                    folder.appIdentifiers = folder.appIdentifiers.filter { !preferences.hiddenApps.contains($0) }
-                    if folder.appIdentifiers.isEmpty {
-                        return nil
-                    }
-                    var filteredItem = item
-                    filteredItem.folder = folder
-                    return filteredItem
-                }
-            }
-        }
-    }
-
-    func app(for identifier: String) -> DiscoveredApp? {
-        appsByIdentifier[identifier]
-    }
-
-    // MARK: - Layout façade (delegates to LayoutController)
-
-    func collection(withID id: String) -> AppCollectionItem? {
-        layoutController.collection(withID: id)
-    }
-
-    func createEmptyFolder(named name: String) {
-        layoutController.createEmptyFolder(named: name)
-    }
-
-    func renameFolder(id: String, to newName: String) {
-        layoutController.renameFolder(id: id, to: newName)
-    }
-
-    func moveItem(_ draggedID: String, before targetID: String?) {
-        layoutController.moveItem(draggedID, before: targetID)
-    }
-
-    func addApp(_ appID: String, toFolder folderID: String) {
-        layoutController.addApp(appID, toFolder: folderID)
-    }
-
-    func createFolder(byCombining firstID: String, and secondID: String) {
-        let identifiers = [firstID, secondID]
-        let folderName = FolderNaming.suggestedName(forAppIdentifiers: identifiers,
-                                                    appsByIdentifier: appsByIdentifier)
-            ?? NSLocalizedString("New Folder", comment: "Default folder name")
-        layoutController.createFolder(byCombining: firstID, and: secondID, named: folderName)
-    }
-
-    func removeApp(_ appID: String, fromFolder folderID: String) {
-        layoutController.removeApp(appID, fromFolder: folderID)
-    }
-
-    func deleteFolder(_ folderID: String) {
-        layoutController.deleteFolder(folderID)
-    }
+    var cachedCollections: (key: CollectionOrderingKey, value: [AppCollectionItem])?
 
     // MARK: - Private helpers
 
-    private func orderedIdentifiers() -> [String] {
-        layoutController.orderedIdentifiers
-    }
-
-    private func localRankedResults(for query: String, limit: Int? = nil) -> [(app: DiscoveredApp, score: Double)] {
-        searchIndex.search(query, favorites: favorites, recents: recents,
-                           layout: layout, limit: limit)
-    }
-
     private func rebuildUnifiedIndex(approvedShortcuts: [String]? = nil, recipes: [Recipe]? = nil) {
-        let apps = apps
-        let indexedItems = indexedItems
-        let approvedShortcuts = approvedShortcuts ?? preferences.approvedShortcuts
-        let recipes = recipes ?? recipeStore.recipes
-        unifiedIndexGeneration += 1
-        let requestGeneration = unifiedIndexGeneration
-        unifiedIndexTask?.cancel()
-        let startedAt = ContinuousClock.now
-        unifiedIndexTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let items = SearchCatalogBuilder.build(apps: apps, indexedItems: indexedItems,
-                                                   approvedShortcuts: approvedShortcuts,
-                                                   recipes: recipes)
-            let snapshot = UnifiedIndexSnapshot(items: items)
-            guard !Task.isCancelled else { return }
-            await self?.applyUnifiedIndex(snapshot, generation: requestGeneration,
-                                          elapsed: startedAt.duration(to: .now))
-        }
+        unifiedIndex.rebuild(apps: apps, indexedItems: indexedItems,
+                             approvedShortcuts: approvedShortcuts ?? preferences.approvedShortcuts,
+                             recipes: recipes ?? recipeStore.recipes)
     }
-
-    private func applyUnifiedIndex(_ snapshot: UnifiedIndexSnapshot, generation: Int,
-                                   elapsed: Duration) {
-        guard generation == unifiedIndexGeneration else { return }
-        searchItemsByIdentifier = snapshot.catalog
-        unifiedSearchIndex = snapshot.index
-        searchCatalogRevision &+= 1
-        appStateLogger.debug("Unified index built count=\(snapshot.catalog.count) duration=\(Self.milliseconds(elapsed), format: .fixed(precision: 1))ms")
-    }
-
-    nonisolated private static func milliseconds(_ duration: Duration) -> Double {
-        let components = duration.components
-        return Double(components.seconds) * 1_000
-            + Double(components.attoseconds) / 1_000_000_000_000_000
-    }
-
-    private func recordRecentDocument(_ path: String) {
-        _ = try? recentDocumentStore.record(path: path)
-        // Opening a document only needs that one item in the index, not a rescan of every root.
-        guard !indexedItems.contains(where: { $0.fileSystemPath == path }),
-              let item = LocalContentIndexer().recentItem(for: URL(fileURLWithPath: path)) else { return }
-        indexedItems.append(item)
-        rebuildUnifiedIndex()
-        persistLocalIndex()
-    }
-
-    private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {
-        switch option {
-        case .custom:
-            return orderedIdentifiers()
-        case .alphabetical:
-            return AppSorting.alphabetical(apps)
-        case .mostLaunched:
-            return AppSorting.mostLaunched(apps, launchCounts: launchCountStore.counts)
-        case .recentlyLaunched:
-            return AppSorting.recentlyLaunched(apps, recents: recents)
-        }
-    }
-}
-
-private extension SearchItem {
-    var fileSystemURL: URL? { fileSystemPath.map { URL(fileURLWithPath: $0) } }
 }
