@@ -23,11 +23,13 @@ struct ContentView: View {
     @State private var isLibraryExpanded = false
     @State private var isCommandPressed = false
     @State private var unifiedResults: [SearchItem] = []
+    @State private var searchTask: Task<Void, Never>?
 
-    private func makeUnifiedResults() -> [SearchItem] {
+    private func makeUnifiedResults() async -> [SearchItem] {
         let query = searchText.hasPrefix("/") ? String(searchText.dropFirst()) : searchText
         guard !query.isEmpty else { return [] }
-        let local = appState.searchItems(matching: query).filter { selectedKinds.contains($0.kind) }
+        let kinds = selectedKinds
+        let local = await appState.searchItems(matching: query).filter { kinds.contains($0.kind) }
         guard searchText.hasPrefix("/"), !appState.intentResults.isEmpty else { return local }
         let recommended = appState.intentResults.compactMap { appState.searchItem(identifier: $0.targetIdentifier) }
         let IDs = Set(recommended.map(\.id))
@@ -60,7 +62,7 @@ struct ContentView: View {
             mainContent
         }
         .onAppear(perform: configure)
-        .onDisappear { focusCancellable?.cancel() }
+        .onDisappear { focusCancellable?.cancel(); searchTask?.cancel() }
         .onChange(of: searchText) { _, newValue in
             if appState.searchQuery != newValue {
                 appState.searchQuery = newValue
@@ -429,16 +431,26 @@ struct ContentView: View {
     }
 
     private func launchTopResult() {
-        guard let item = searchSelection.selectedItem(in: unifiedResults) else { return }
-        runSearchItem(item)
+        // Return can arrive before the latest keystroke's ranking finishes.
+        let pending = searchTask
+        Task { @MainActor in
+            await pending?.value
+            guard let item = searchSelection.selectedItem(in: unifiedResults) else { return }
+            runSearchItem(item)
+        }
     }
 
+    /// Typing never waits on ranking: each keystroke cancels the previous search, and only the
+    /// newest one may publish its results.
     private func refreshSearchResults() {
-        let results = makeUnifiedResults()
-        guard results != unifiedResults else { return }
-        unifiedResults = results
-        searchSelection.reconcile(items: results)
-        selectedObjectIDs.formIntersection(Set(results.map(\.id)))
+        searchTask?.cancel()
+        searchTask = Task { @MainActor in
+            let results = await makeUnifiedResults()
+            guard !Task.isCancelled, results != unifiedResults else { return }
+            unifiedResults = results
+            searchSelection.reconcile(items: results)
+            selectedObjectIDs.formIntersection(Set(results.map(\.id)))
+        }
     }
 
     private func runSearchItem(_ item: SearchItem) {

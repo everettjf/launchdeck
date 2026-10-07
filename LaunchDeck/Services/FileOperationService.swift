@@ -18,10 +18,29 @@ enum FileOperationError: LocalizedError, Equatable {
 }
 
 nonisolated struct FileUndoRecord: Codable, Hashable, Sendable {
+    /// `source` is where the item is after the operation; undo moves it back to `destination`.
     nonisolated struct Move: Codable, Hashable, Sendable { let source: URL; let destination: URL }
     let title: String
     let moves: [Move]
     let createdURLs: [URL]
+
+    /// The paths the operation removed and added, used to update the local index in place.
+    var change: LocalContentChange {
+        LocalContentChange(removedPaths: moves.map(\.destination.path),
+                           addedURLs: moves.map(\.source) + createdURLs)
+    }
+
+    var undoChange: LocalContentChange {
+        LocalContentChange(removedPaths: moves.map(\.source.path) + createdURLs.map(\.path),
+                           addedURLs: moves.map(\.destination))
+    }
+}
+
+nonisolated struct LocalContentChange: Hashable, Sendable {
+    var removedPaths: [String] = []
+    var addedURLs: [URL] = []
+
+    static let none = LocalContentChange()
 }
 
 struct FileOperationService {

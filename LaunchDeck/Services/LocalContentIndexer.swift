@@ -74,6 +74,45 @@ nonisolated struct LocalContentIndexer: Sendable {
         return found.values.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
+    /// Classifies one path the way a full scan would, so a single changed file can be added to
+    /// the index without rescanning. Returns nil when a scan would not include it.
+    func item(for url: URL, roots: [URL], maximumDepth: Int = Configuration(roots: []).maximumDepth) -> SearchItem? {
+        let path = url.standardizedFileURL.path
+        guard let root = roots.map(\.standardizedFileURL).first(where: { path == $0.path || path.hasPrefix($0.path + "/") }) else {
+            return nil
+        }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
+        if path == root.path {
+            return isDirectory.boolValue ? item(url, kind: .folder, keywords: ["folder", "search root"]) : nil
+        }
+        let relative = url.standardizedFileURL.pathComponents.dropFirst(root.pathComponents.count)
+        guard relative.count <= maximumDepth,
+              !relative.contains(where: { $0.hasPrefix(".") && $0 != "." }),
+              !relative.dropLast().contains(where: { Self.ignoredDirectories.contains($0.lowercased())
+                  || Self.projectExtensions.contains(URL(fileURLWithPath: $0).pathExtension.lowercased()) }) else {
+            return nil
+        }
+        let ext = url.pathExtension.lowercased()
+        if Self.projectExtensions.contains(ext) { return item(url, kind: .project, keywords: ["project", "xcode"]) }
+        if isDirectory.boolValue {
+            if Self.ignoredDirectories.contains(url.lastPathComponent.lowercased()) { return nil }
+            if FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) {
+                return item(url, kind: .project, keywords: ["project", "git", "repository"])
+            }
+            return relative.count == 1 ? item(url, kind: .folder, keywords: ["folder"]) : nil
+        }
+        return Self.documentExtensions.contains(ext) ? item(url, kind: .file, keywords: [ext, "document"]) : nil
+    }
+
+    /// The item a full scan adds for a recently opened document outside the indexed roots.
+    func recentItem(for url: URL) -> SearchItem? {
+        var isDirectory: ObjCBool = false
+        guard url.isFileURL, FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return nil }
+        let kind: SearchItemKind = isDirectory.boolValue ? .folder : .file
+        return item(url, kind: kind, keywords: ["recent", kind.rawValue])
+    }
+
     private func item(_ url: URL, kind: SearchItemKind, keywords: [String]) -> SearchItem {
         let target: SearchItemTarget
         switch kind {

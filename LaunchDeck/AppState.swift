@@ -413,7 +413,7 @@ final class AppState: ObservableObject {
                     self.objectUndoManager.registerUndo(withTarget: self) { state in state.undoObjectAction(undo) }
                     self.objectUndoManager.setActionName(undo.title)
                 }
-                self.refreshLocalContent()
+                self.applyLocalContentChange(undo?.change ?? .none)
             } catch { self?.actionController.presentError(error.localizedDescription) }
         }
     }
@@ -424,7 +424,7 @@ final class AppState: ObservableObject {
     }
 
     private func undoObjectAction(_ record: FileUndoRecord) {
-        do { try fileOperationService.undo(record); refreshLocalContent() }
+        do { try fileOperationService.undo(record); applyLocalContentChange(record.undoChange) }
         catch { actionController.presentError("Undo failed: \(error.localizedDescription)") }
     }
 
@@ -483,7 +483,9 @@ final class AppState: ObservableObject {
         return localRankedResults(for: actualQuery).map(\.app)
     }
 
-    func searchItems(matching query: String, limit: Int = 80) -> [SearchItem] {
+    /// Ranks the unified index off the main actor; the small utility, clipboard and extension
+    /// providers stay on the main actor because they read main-actor stores.
+    func searchItems(matching query: String, limit: Int = 80) async -> [SearchItem] {
         let parsed = SearchQuery.parse(query)
         let searchableText = parsed.text
         let utilityCandidates = searchableText.isEmpty ? [] : (UtilitySearchProvider.results(for: searchableText, quicklinks: quicklinkStore.quicklinks)
@@ -493,10 +495,12 @@ final class AppState: ObservableObject {
                                           snippets: snippetStore.snippets)
             + extensionStore.searchItems(matching: searchableText))
         let utilities = utilityCandidates.filter(parsed.matches)
-        let ranked = unifiedSearchIndex.search(parsed,
-                                               kindBoosts: [.application: 0.04, .project: 0.03],
-                                               itemBoosts: searchLearningStore.boosts(for: parsed.text),
-                                               limit: limit).map(\.item)
+        let index = unifiedSearchIndex
+        let itemBoosts = searchLearningStore.boosts(for: parsed.text)
+        let ranked = await Task.detached(priority: .userInitiated) {
+            index.search(parsed, kindBoosts: [.application: 0.04, .project: 0.03],
+                         itemBoosts: itemBoosts, limit: limit).map(\.item)
+        }.value
         return Array((utilities + ranked).prefix(limit))
     }
 
@@ -528,7 +532,10 @@ final class AppState: ObservableObject {
         case .rename:
             guard let url = item.fileSystemURL,
                   let name = prompt(title: "Rename \(url.lastPathComponent)", message: "Enter a new name:", value: url.lastPathComponent) else { return }
-            runFileOperation { [fileOperationService] in _ = try fileOperationService.rename(url, to: name) }
+            runFileOperation { [fileOperationService] in
+                let renamed = try fileOperationService.rename(url, to: name)
+                return LocalContentChange(removedPaths: [url.path], addedURLs: [renamed])
+            }
         case .move:
             guard let url = item.fileSystemURL else { return }
             let panel = NSOpenPanel()
@@ -540,18 +547,19 @@ final class AppState: ObservableObject {
                 panel.directoryURL = URL(fileURLWithPath: recent)
             }
             guard panel.runModal() == .OK, let destination = panel.url else { return }
-            runFileOperation { [fileOperationService] in _ = try fileOperationService.move([url], to: destination) }
+            runFileOperation { [fileOperationService] in try fileOperationService.moveWithUndo([url], to: destination).change }
         case .duplicate:
             guard let url = item.fileSystemURL else { return }
-            runFileOperation { [fileOperationService] in _ = try fileOperationService.duplicate(url) }
+            runFileOperation { [fileOperationService] in LocalContentChange(addedURLs: [try fileOperationService.duplicate(url)]) }
         case .compress:
             guard let url = item.fileSystemURL else { return }
-            runFileOperation { [fileOperationService] in _ = try await fileOperationService.compress(url) }
+            runFileOperation { [fileOperationService] in LocalContentChange(addedURLs: [try await fileOperationService.compress(url)]) }
         case .tag:
             guard let url = item.fileSystemURL,
                   let value = prompt(title: "Set Finder Tags", message: "Enter comma-separated tags:", value: "") else { return }
             runFileOperation { [fileOperationService] in
                 try fileOperationService.setTags(value.split(separator: ",").map(String.init), on: [url])
+                return .none
             }
         case .trash:
             guard let url = item.fileSystemURL else { return }
@@ -561,7 +569,7 @@ final class AppState: ObservableObject {
             alert.addButton(withTitle: "Move to Trash")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            runFileOperation { [fileOperationService] in try fileOperationService.moveToTrash([url]) }
+            runFileOperation { [fileOperationService] in try fileOperationService.moveToTrash([url]).change }
         case .paste:
             guard case .clipboardEntry(let identifier) = item.target,
                   let entry = clipboardStore.entries.first(where: { $0.id == identifier }) else { return }
@@ -569,11 +577,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func runFileOperation(_ operation: @escaping () async throws -> Void) {
+    private func runFileOperation(_ operation: @escaping () async throws -> LocalContentChange) {
         Task { [weak self] in
             do {
-                try await operation()
-                self?.refreshLocalContent()
+                let change = try await operation()
+                self?.applyLocalContentChange(change)
             } catch {
                 let alert = NSAlert(error: error)
                 alert.runModal()
@@ -690,6 +698,41 @@ final class AppState: ObservableObject {
             guard !Task.isCancelled else { return }
             await self?.applyIndexedItems(items, generation: requestGeneration, source: "scan",
                                           elapsed: startedAt.duration(to: .now))
+        }
+    }
+
+    /// Updates the local index in place after a file operation. Only a new or moved directory,
+    /// whose contents a single-path update cannot cover, falls back to a full rescan.
+    func applyLocalContentChange(_ change: LocalContentChange) {
+        guard change != .none else { return }
+        let roots = preferences.indexedRootPaths.map(URL.init(fileURLWithPath:))
+        let addsDirectory = change.addedURLs.contains { url in
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+                && !["xcodeproj", "xcworkspace", "playground"].contains(url.pathExtension.lowercased())
+                && roots.contains { url.path.hasPrefix($0.path + "/") }
+        }
+        if addsDirectory {
+            refreshLocalContent()
+            return
+        }
+        let removed = Set(change.removedPaths + change.addedURLs.map(\.path))
+        indexedItems.removeAll { item in
+            guard let path = item.fileSystemPath else { return false }
+            return removed.contains(path) || removed.contains { path.hasPrefix($0 + "/") }
+        }
+        let indexer = LocalContentIndexer()
+        indexedItems += change.addedURLs.compactMap { indexer.item(for: $0, roots: roots) }
+        rebuildUnifiedIndex()
+        persistLocalIndex()
+    }
+
+    private func persistLocalIndex() {
+        let snapshot = LocalIndexSnapshot(rootPaths: preferences.indexedRootPaths, items: indexedItems)
+        let localIndexStore = localIndexStore
+        Task.detached(priority: .utility) {
+            do { try localIndexStore.save(snapshot) }
+            catch { appStateLogger.error("Local index cache save failed: \(error.localizedDescription, privacy: .public)") }
         }
     }
 
@@ -862,7 +905,30 @@ final class AppState: ObservableObject {
         }
     }
 
+    private struct CollectionOrderingKey: Equatable {
+        let sortOption: AppPreferences.SortOption
+        let showHiddenApps: Bool
+        let hiddenApps: Set<String>
+        let layout: [AppCollectionItem]
+        let apps: [DiscoveredApp]
+        let recents: [RecentLaunch]
+    }
+
+    private var cachedCollections: (key: CollectionOrderingKey, value: [AppCollectionItem])?
+
+    /// The grid reads this several times per render and AppState republishes changes from
+    /// every sub-store, so the sorted result is reused until one of its inputs changes.
     func orderedCollections() -> [AppCollectionItem] {
+        let key = CollectionOrderingKey(sortOption: preferences.sortOption, showHiddenApps: preferences.showHiddenApps,
+                                        hiddenApps: preferences.hiddenApps, layout: layout, apps: apps,
+                                        recents: recents)
+        if let cachedCollections, cachedCollections.key == key { return cachedCollections.value }
+        let value = computeOrderedCollections()
+        cachedCollections = (key, value)
+        return value
+    }
+
+    private func computeOrderedCollections() -> [AppCollectionItem] {
         let collections: [AppCollectionItem]
         switch preferences.sortOption {
         case .custom:
@@ -989,7 +1055,12 @@ final class AppState: ObservableObject {
 
     private func recordRecentDocument(_ path: String) {
         _ = try? recentDocumentStore.record(path: path)
-        refreshLocalContent()
+        // Opening a document only needs that one item in the index, not a rescan of every root.
+        guard !indexedItems.contains(where: { $0.fileSystemPath == path }),
+              let item = LocalContentIndexer().recentItem(for: URL(fileURLWithPath: path)) else { return }
+        indexedItems.append(item)
+        rebuildUnifiedIndex()
+        persistLocalIndex()
     }
 
     private func sortedAppIdentifiers(for option: AppPreferences.SortOption) -> [String] {

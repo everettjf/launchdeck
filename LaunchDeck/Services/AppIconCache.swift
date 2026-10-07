@@ -8,6 +8,9 @@ final class AppIconCache {
 
     private let cache = NSCache<NSString, NSImage>()
     private var pending: [String: [(NSImage) -> Void]] = [:]
+    private var keysByPath: [String: Set<String>] = [:]
+    private var generations: [String: Int] = [:]
+    private var epoch = 0
     private let loader: Loader
 
     init(loader: @escaping Loader = { path, size in
@@ -32,27 +35,49 @@ final class AppIconCache {
             return
         }
         pending[key] = [completion]
+        load(path: path, size: size, key: key)
+    }
 
-        Task {
-            let image = await loader(path, size)
-            let scale = NSScreen.main?.backingScaleFactor ?? 2
-            let pixels = max(1, Int(size * scale))
-            cache.setObject(image, forKey: key as NSString, cost: pixels * pixels * 4)
-            let completions = pending.removeValue(forKey: key) ?? []
-            completions.forEach { $0(image) }
+    /// Evicts one bundle's icons. Callers already waiting keep waiting and receive the
+    /// reloaded icon; the in-flight load that started before the update is discarded.
+    func invalidate(path: String) {
+        generations[path, default: 0] += 1
+        for key in keysByPath.removeValue(forKey: path) ?? [] {
+            cache.removeObject(forKey: key as NSString)
         }
     }
 
-    func invalidate(path: String) {
-        // NSCache does not expose its keys, so clearing is the only reliable way
-        // to avoid retaining a stale application icon after a bundle update.
+    func removeAll() {
+        epoch += 1
         cache.removeAllObjects()
-        pending = pending.filter { !$0.key.hasPrefix("\(path)#") }
+        keysByPath.removeAll()
     }
 
-    func removeAll() {
-        cache.removeAllObjects()
-        pending.removeAll()
+    private struct Generation: Equatable {
+        let epoch: Int
+        let path: Int
+    }
+
+    private func generation(for path: String) -> Generation {
+        Generation(epoch: epoch, path: generations[path, default: 0])
+    }
+
+    private func load(path: String, size: CGFloat, key: String) {
+        let startedGeneration = generation(for: path)
+        Task {
+            let image = await loader(path, size)
+            guard generation(for: path) == startedGeneration else {
+                // The bundle changed while this load ran: the image may be stale.
+                if pending[key] != nil { load(path: path, size: size, key: key) }
+                return
+            }
+            let scale = NSScreen.main?.backingScaleFactor ?? 2
+            let pixels = max(1, Int(size * scale))
+            cache.setObject(image, forKey: key as NSString, cost: pixels * pixels * 4)
+            keysByPath[path, default: []].insert(key)
+            let completions = pending.removeValue(forKey: key) ?? []
+            completions.forEach { $0(image) }
+        }
     }
 
     nonisolated private static func fetchIcon(path: String, size: CGFloat) -> NSImage {
