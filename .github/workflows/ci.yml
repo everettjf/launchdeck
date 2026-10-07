@@ -20,6 +20,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
+      # A fresh checkout has no working-tree diff, so compare the whole tree with the empty tree.
+      - name: Check whitespace
+        run: git diff --check "$(git hash-object -t tree /dev/null)" HEAD
+
       - name: Run package tests
         run: swift test
         working-directory: Core

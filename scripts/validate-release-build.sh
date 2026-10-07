@@ -17,7 +17,6 @@ binary="$app_path/Contents/MacOS/LaunchDeck"
 
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == "com.everettjf.launchdeck" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$plist")" == "launchdeck" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$plist")" == "false" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$plist")" == "true" ]]
 [[ -n "$(/usr/libexec/PlistBuddy -c 'Print :NSAppleEventsUsageDescription' "$plist")" ]]
 lipo "$binary" -verify_arch arm64

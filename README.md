@@ -126,7 +126,7 @@ Clipboard history is stored in `~/Library/Application Support/LaunchDeck/clipboa
 
 ## Performance benchmark
 
-Run `cd Core && swift run -c release application-index-benchmark --apps 100000`. The command emits JSON covering cold discovery, incremental refresh, app and unified-index construction, qualified and fuzzy-search p50/p95 latency, intent-candidate retrieval, resident memory, and index memory delta. CI validates it against `Benchmarks/search-thresholds-100k.json`.
+Run `cd Core && swift run -c release application-index-benchmark --apps 100000`. The command emits JSON covering cold discovery, incremental refresh, app and unified-index construction, qualified and fuzzy-search p50/p95 latency, intent-candidate retrieval, resident memory, and index memory delta. CI validates it against `Benchmarks/search-thresholds-100k-ci.json` (calibrated for shared GitHub runners); releases validate it against the stricter `Benchmarks/search-thresholds-100k.json`.
 
 ## Project Structure
 

@@ -21,10 +21,11 @@ usage: scripts/release-patch.sh
 Increments LaunchDeck's patch version, tests, signs, notarizes, publishes a
 GitHub Release, and updates everettjf/homebrew-tap.
 
-Required environment variables:
-  APPLE_ID
-  APPLE_SPECIFIC_PASSWORD
-  APPLE_TEAM_ID
+Notarization credentials (one of):
+  NOTARY_KEYCHAIN_PROFILE     notarytool keychain profile (preferred; created with
+                              `xcrun notarytool store-credentials`, keeps the password
+                              out of process arguments)
+  APPLE_ID, APPLE_SPECIFIC_PASSWORD, APPLE_TEAM_ID
 
 Optional environment variables:
   LAUNCHDECK_RELEASE_BRANCH   Git branch to publish (default: main)
@@ -59,12 +60,17 @@ normalize_version() {
   fi
 }
 
-for command in brew codesign ditto gh git ruby security shasum swift xcodebuild xcodegen xcrun; do
+for command in brew codesign ditto gh git python3 ruby security shasum swift xcodebuild xcodegen xcrun; do
   require_command "$command"
 done
-for variable in APPLE_ID APPLE_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-  require_environment "$variable"
-done
+if [[ -n "${NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
+  notary_credentials=(--keychain-profile "$NOTARY_KEYCHAIN_PROFILE")
+else
+  for variable in APPLE_ID APPLE_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+    require_environment "$variable"
+  done
+  notary_credentials=(--apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_SPECIFIC_PASSWORD")
+fi
 
 [[ -f "$project_file" ]] || fail "project configuration not found: $project_file"
 [[ -z "$(git -C "$project_root" status --porcelain)" ]] || fail "commit or stash all changes before releasing"
@@ -168,6 +174,11 @@ else
 
   echo "Running LaunchDeck $version tests…"
   (cd "$project_root/Core" && swift test)
+  echo "Running the 100k search and memory benchmark gate…"
+  (cd "$project_root/Core" && swift run -c release application-index-benchmark --apps 100000 \
+    > "$release_dir/search-100000.json")
+  python3 "$project_root/scripts/validate-search-benchmark.py" \
+    "$release_dir/search-100000.json" "$project_root/Benchmarks/search-thresholds-100k.json"
   (cd "$project_root" && xcodegen generate)
   xcodebuild \
     -project "$project_root/LaunchDeck.xcodeproj" \
@@ -203,11 +214,7 @@ else
   grep -q 'flags=.*runtime' <<<"$codesign_details" || fail "production signature does not enable hardened runtime"
 
   ditto -c -k --sequesterRsrc --keepParent "$app_path" "$notary_archive"
-  notary_output="$(xcrun notarytool submit "$notary_archive" \
-    --apple-id "$APPLE_ID" \
-    --team-id "$APPLE_TEAM_ID" \
-    --password "$APPLE_SPECIFIC_PASSWORD" \
-    --wait)"
+  notary_output="$(xcrun notarytool submit "$notary_archive" "${notary_credentials[@]}" --wait)"
   printf '%s\n' "$notary_output"
   grep -q 'status: Accepted' <<<"$notary_output" || fail "Apple notarization did not return Accepted"
 

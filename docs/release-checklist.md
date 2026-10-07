@@ -8,7 +8,8 @@
 - Release metadata and `launchdeck://` URL scheme validate.
 - The 100,000-application search and resident-memory benchmark stays within tracked thresholds.
 - All 15 competitor-referenced end-to-end task contracts pass.
-- `git diff --check` passes.
+- `git diff --check` over the whole tree passes (CI "Check whitespace" step).
+- `scripts/release-patch.sh` reruns the 100k benchmark against `Benchmarks/search-thresholds-100k.json` before signing.
 
 ## Manual macOS matrix
 

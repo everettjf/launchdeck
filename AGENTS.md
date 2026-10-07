@@ -8,7 +8,7 @@ This document tracks how LaunchDeck integrates Apple Foundation Models (Apple In
 
 - The product name and app target are **LaunchDeck**.
 - The bundle identifier is `com.everettjf.launchdeck`.
-- The former `com.xnu.startmyapp` bundle identifier is retired and must not be restored for App Store continuity.
+- The former `com.xnu.startmyapp` bundle identifier is retired and must not be restored.
 - LaunchDeck is distributed with Developer ID signing through Homebrew and GitHub Releases. Do not add or maintain a Mac App Store release path.
 
 ## Core Capabilities

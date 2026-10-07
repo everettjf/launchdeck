@@ -25,7 +25,6 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         LSUIElement: true
         NSAppleEventsUsageDescription: LaunchDeck reads the current Finder selection or browser tab when you press the LaunchDeck shortcut, so you can act on it.
-        ITSAppUsesNonExemptEncryption: false
         NSHumanReadableCopyright: ""
         CFBundleURLTypes:
           - CFBundleURLName: com.everettjf.launchdeck.recipe
@@ -41,7 +40,7 @@ targets:
         PRODUCT_NAME: "$(TARGET_NAME)"
         MARKETING_VERSION: "2.0.11"
         CURRENT_PROJECT_VERSION: "2011"
-        SWIFT_VERSION: "5.0"
+        SWIFT_VERSION: "6.0"
         DEVELOPMENT_TEAM: YPV49M8592
         CODE_SIGN_STYLE: Automatic
         ENABLE_APP_SANDBOX: NO
@@ -57,19 +56,14 @@ targets:
         ENABLE_RESOURCE_ACCESS_LOCATION: NO
         ENABLE_RESOURCE_ACCESS_PRINTING: NO
         ENABLE_RESOURCE_ACCESS_USB: NO
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: LaunchDeck
-        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        INFOPLIST_KEY_LSUIElement: YES
-        INFOPLIST_KEY_NSHumanReadableCopyright: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # LaunchDeck/Info.plist (generated from `info` above) is the only Info.plist source.
+        GENERATE_INFOPLIST_FILE: NO
         COMBINE_HIDPI_IMAGES: YES
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
-        REGISTER_APP_GROUPS: YES
         STRING_CATALOG_GENERATE_SYMBOLS: YES
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor

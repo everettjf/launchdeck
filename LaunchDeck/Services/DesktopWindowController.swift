@@ -68,7 +68,7 @@ enum DesktopWindowController {
               let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else {
             return "The frontmost app did not expose a movable focused window."
         }
-        let window = unsafeBitCast(focused, to: AXUIElement.self)
+        let window = focused as! AXUIElement
         guard let currentFrame = frame(of: window) else { return "LaunchDeck could not read the focused window frame." }
         let key = WindowKey(processIdentifier: app.processIdentifier, elementHash: CFHash(window))
         let screens = NSScreen.screens.sorted { $0.frame.minX < $1.frame.minX }
@@ -130,8 +130,8 @@ enum DesktopWindowController {
               CFGetTypeID(positionValue) == AXValueGetTypeID(), CFGetTypeID(sizeValue) == AXValueGetTypeID() else { return nil }
         var origin = CGPoint.zero
         var size = CGSize.zero
-        guard AXValueGetValue(unsafeBitCast(positionValue, to: AXValue.self), .cgPoint, &origin),
-              AXValueGetValue(unsafeBitCast(sizeValue, to: AXValue.self), .cgSize, &size) else { return nil }
+        guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin),
+              AXValueGetValue(sizeValue as! AXValue, .cgSize, &size) else { return nil }
         return CGRect(origin: origin, size: size)
     }
 

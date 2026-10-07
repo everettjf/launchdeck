@@ -93,7 +93,7 @@ struct LaunchDeckApp: App {
         sysctlbyname("hw.model", nil, &size, nil, 0)
         var model = [CChar](repeating: 0, count: size)
         sysctlbyname("hw.model", &model, &size, nil, 0)
-        deviceModel = String(cString: model)
+        deviceModel = String(decoding: model.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
 
         let subject = "Feedback-LaunchDeck"
         let body = """
