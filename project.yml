@@ -24,12 +24,17 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         LSUIElement: true
+        NSAppleEventsUsageDescription: LaunchDeck reads the current Finder selection or browser tab when you press the LaunchDeck shortcut, so you can act on it.
         ITSAppUsesNonExemptEncryption: false
         NSHumanReadableCopyright: ""
         CFBundleURLTypes:
           - CFBundleURLName: com.everettjf.launchdeck.recipe
             CFBundleURLSchemes:
               - launchdeck
+    entitlements:
+      path: LaunchDeck/LaunchDeck.entitlements
+      properties:
+        com.apple.security.automation.apple-events: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.everettjf.launchdeck

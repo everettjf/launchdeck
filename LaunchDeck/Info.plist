@@ -37,6 +37,8 @@
 	<string>public.app-category.productivity</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>LaunchDeck reads the current Finder selection or browser tab when you press the LaunchDeck shortcut, so you can act on it.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
 </dict>

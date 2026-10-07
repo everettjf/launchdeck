@@ -30,9 +30,14 @@ final class ShortcutCoordinator: ObservableObject {
                 let appState = self.appState
 
                 Task { @MainActor in
+                    // Hiding the window must not touch the frontmost app's selection or clipboard.
+                    guard !WindowManager.shared.isMainWindowVisible else {
+                        WindowManager.shared.toggleMainWindow()
+                        return
+                    }
                     InstantSendService.capture { objects in
                         appState.receiveInstantSend(objects)
-                        WindowManager.shared.toggleMainWindow {
+                        WindowManager.shared.showMainWindow {
                             Task { @MainActor in appState.postSearchFocusRequest() }
                         }
                     }

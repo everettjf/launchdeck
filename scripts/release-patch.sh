@@ -188,12 +188,16 @@ else
     CURRENT_PROJECT_VERSION="$next_build" \
     build
 
-  codesign --force --deep --options runtime --timestamp --sign "$signing_identity" "$app_path"
+  codesign --force --options runtime --timestamp \
+    --entitlements "$project_root/LaunchDeck/LaunchDeck.entitlements" \
+    --sign "$signing_identity" "$app_path"
   codesign --verify --deep --strict --verbose=2 "$app_path"
   entitlements="$(codesign -d --entitlements :- "$app_path" 2>/dev/null || true)"
   if grep -q 'com.apple.security.get-task-allow' <<<"$entitlements"; then
     fail "production signature contains com.apple.security.get-task-allow"
   fi
+  grep -q 'com.apple.security.automation.apple-events' <<<"$entitlements" \
+    || fail "production signature is missing the Apple Events automation entitlement"
   codesign_details="$(codesign -d --verbose=4 "$app_path" 2>&1)"
   grep -q '^Timestamp=' <<<"$codesign_details" || fail "production signature has no secure timestamp"
   grep -q 'flags=.*runtime' <<<"$codesign_details" || fail "production signature does not enable hardened runtime"

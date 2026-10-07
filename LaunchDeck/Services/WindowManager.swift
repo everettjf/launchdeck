@@ -62,8 +62,13 @@ final class WindowManager {
 
     /// Toggles the main window for the global shortcut. A visible window is
     /// hidden; a hidden, minimized, or closed window is shown and activated.
+    var isMainWindowVisible: Bool {
+        guard let window = mainWindow else { return false }
+        return window.isVisible && !window.isMiniaturized
+    }
+
     func toggleMainWindow(completion: (() -> Void)? = nil) {
-        if let window = mainWindow, window.isVisible, !window.isMiniaturized {
+        if let window = mainWindow, isMainWindowVisible {
             window.orderOut(nil)
         } else {
             showMainWindow(completion: completion)

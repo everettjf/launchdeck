@@ -226,6 +226,16 @@ final class AppState: ObservableObject {
             .dropFirst()
             .sink { [weak self] shortcuts in self?.rebuildUnifiedIndex(approvedShortcuts: shortcuts) }
             .store(in: &cancellables)
+        // Turning history off also deletes what was already captured.
+        preferences.$clipboardEnabled
+            .removeDuplicates()
+            .dropFirst()
+            .filter { !$0 }
+            .sink { [weak self] _ in self?.clipboardStore.clear() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+            .sink { [weak self] _ in self?.clipboardStore.flush() }
+            .store(in: &cancellables)
     }
 
     private func setupDirectoryMonitoring() {
