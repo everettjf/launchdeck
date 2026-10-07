@@ -9,6 +9,7 @@
 - The 100,000-application search and resident-memory benchmark stays within tracked thresholds.
 - All 15 competitor-referenced end-to-end task contracts pass.
 - `git diff --check` over the whole tree passes (CI "Check whitespace" step).
+- The Homebrew cask's `depends_on macos:` matches the deployment target in `project.yml` (`scripts/validate-cask-requirement.sh`, run by the release script before building).
 - `scripts/release-patch.sh` reruns the 100k benchmark against `Benchmarks/search-thresholds-100k.json` before signing.
 
 ## Manual macOS matrix

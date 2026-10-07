@@ -113,6 +113,7 @@ tap_cask="$tap_dir/repository/$tap_cask_path"
 [[ -f "$tap_cask" ]] || fail "LaunchDeck cask not found: $tap_cask"
 tap_version="$(ruby -e 'puts File.read(ARGV.fetch(0))[/^\s*version\s+"([^"]+)"/, 1]' "$tap_cask")"
 tap_version="$(normalize_version "$tap_version")"
+bash "$project_root/scripts/validate-cask-requirement.sh" "$project_file" "$tap_cask"
 
 latest_tag_commit="$(git -C "$project_root" rev-list -n 1 "$latest_tag")"
 release_exists=false
