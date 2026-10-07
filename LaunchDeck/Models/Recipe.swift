@@ -111,7 +111,7 @@ nonisolated struct Recipe: Codable, Hashable, Identifiable, Sendable {
         variables = workflow.variables
         steps = []
         schemaVersion = WorkflowDefinition.currentSchemaVersion
-        self.workflow = workflow
+        self.workflow = workflow.strippingRunApprovals()
     }
 
     private enum CodingKeys: String, CodingKey { case id, name, variables, steps, schemaVersion, workflow }
@@ -122,7 +122,7 @@ nonisolated struct Recipe: Codable, Hashable, Identifiable, Sendable {
         name = try container.decode(String.self, forKey: .name)
         variables = try container.decodeIfPresent([RecipeVariable].self, forKey: .variables) ?? []
         steps = try container.decodeIfPresent([RecipeStep].self, forKey: .steps) ?? []
-        workflow = try container.decodeIfPresent(WorkflowDefinition.self, forKey: .workflow)
+        workflow = try container.decodeIfPresent(WorkflowDefinition.self, forKey: .workflow)?.strippingRunApprovals()
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? (workflow == nil ? 1 : 2)
     }
     var resolvedWorkflow: WorkflowDefinition { workflow ?? RecipeV1Migrator.migrate(self) }

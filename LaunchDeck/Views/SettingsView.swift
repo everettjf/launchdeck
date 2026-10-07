@@ -416,6 +416,10 @@ struct SettingsView: View {
     }
 
     private func run(_ recipe: Recipe, values: [String: String]) {
+        if recipe.workflow != nil {
+            appState.runRecipe(recipe, values: values)
+            return
+        }
         switch RecipeVariableResolver.resolve(steps: recipe.steps, variables: recipe.variables, values: values) {
         case .resolved(let steps):
             appState.requestAction(.runRecipe(identifier: recipe.id, name: recipe.name, steps: steps))

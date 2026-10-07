@@ -644,39 +644,8 @@ final class AppState: ObservableObject {
             action = SystemSettingsDestination(rawValue: identifier).map { .openSystemSettings(destination: $0) }
         case .shortcut(let name): action = .runShortcut(name: name)
         case .recipe(let identifier):
-            if let recipe = recipeStore.recipes.first(where: { $0.id == identifier }), recipe.workflow != nil {
-                let workflow = recipe.resolvedWorkflow
-                var values: [String: String] = [:]
-                for variable in workflow.variables {
-                    guard let value = prompt(title: "Run \(workflow.name)",
-                                             message: "Value for \(variable.name) (\(variable.valueType.rawValue)):",
-                                             value: variable.defaultValue) else { return }
-                    values[variable.name] = value
-                }
-                let preview = workflowExecutionEngine.dryRun(workflow)
-                guard preview.isReady else {
-                    actionController.presentError(preview.issues.first(where: { $0.severity == .error })?.message ?? "The workflow is invalid.")
-                    return
-                }
-                if workflow.policy.requiresDryRunBeforeMutation, preview.requiresConfirmation {
-                    let alert = NSAlert()
-                    alert.messageText = "Run “\(workflow.name)”?"
-                    alert.informativeText = "Mutations: \(preview.mutations.joined(separator: ", "))\nTools: \(preview.requiredTools.sorted().joined(separator: ", "))"
-                    alert.addButton(withTitle: "Run")
-                    alert.addButton(withTitle: "Cancel")
-                    guard alert.runModal() == .alertFirstButtonReturn else { return }
-                }
-                Task { [weak self] in
-                    guard let self else { return }
-                    let receipt = await self.workflowExecutionEngine.run(workflow, variableValues: values)
-                    if !receipt.succeeded {
-                        self.actionController.presentError(receipt.nodes.last?.error ?? "The workflow could not run.")
-                    }
-                }
-                action = nil
-            } else {
-                action = recipeStore.recipes.first(where: { $0.id == identifier }).map { .runRecipe(identifier: $0.id, name: $0.name, steps: $0.steps) }
-            }
+            if let recipe = recipeStore.recipes.first(where: { $0.id == identifier }) { runRecipe(recipe) }
+            action = nil
         case .copyText(let value):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(value, forType: .string)
@@ -767,7 +736,77 @@ final class AppState: ObservableObject {
     }
 
     func requestAction(_ action: LaunchDeckAction) {
+        // Workflow recipes have no legacy steps; every entry point (search, intents, deep links,
+        // Settings) must route them through the workflow engine.
+        if case .runRecipe(let identifier, _, _) = action,
+           let recipe = recipeStore.recipes.first(where: { $0.id == identifier }), recipe.workflow != nil {
+            runRecipe(recipe)
+            return
+        }
         actionController.request(action, approvedShortcuts: Set(preferences.approvedShortcuts))
+    }
+
+    /// Runs a saved recipe. Missing variable values are asked for; workflow recipes go through
+    /// the workflow engine with a dry run, mutation confirmation and per-run approvals.
+    func runRecipe(_ recipe: Recipe, values providedValues: [String: String]? = nil) {
+        var values = providedValues ?? [:]
+        if providedValues == nil {
+            for variable in recipe.resolvedWorkflow.variables {
+                guard let value = prompt(title: "Run \(recipe.name)",
+                                         message: "Value for \(variable.name) (\(variable.valueType.rawValue)):",
+                                         value: variable.defaultValue) else { return }
+                values[variable.name] = value
+            }
+        }
+        guard recipe.workflow != nil else {
+            switch RecipeVariableResolver.resolve(steps: recipe.steps, variables: recipe.variables, values: values) {
+            case .resolved(let steps):
+                actionController.request(.runRecipe(identifier: recipe.id, name: recipe.name, steps: steps),
+                                         approvedShortcuts: Set(preferences.approvedShortcuts))
+            case .missing(let names):
+                actionController.presentError("Enter values for: \(names.joined(separator: ", ")).")
+            case .invalid(let errors):
+                actionController.presentError(errors.joined(separator: "\n"))
+            }
+            return
+        }
+        var workflow = recipe.resolvedWorkflow
+        let preview = workflowExecutionEngine.dryRun(workflow)
+        guard preview.isReady else {
+            actionController.presentError(preview.issues.first(where: { $0.severity == .error })?.message ?? "The workflow is invalid.")
+            return
+        }
+        if workflow.policy.requiresDryRunBeforeMutation, preview.requiresConfirmation {
+            let alert = NSAlert()
+            alert.messageText = "Run “\(workflow.name)”?"
+            alert.informativeText = "Mutations: \(preview.mutations.joined(separator: ", "))\nTools: \(preview.requiredTools.sorted().joined(separator: ", "))"
+            alert.addButton(withTitle: "Run")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        let approvalSteps = workflow.approvalStepCount
+        let providerBlocks = workflow.providerApprovalNodeCount
+        if approvalSteps > 0 || providerBlocks > 0 {
+            var reasons: [String] = []
+            if approvalSteps > 0 { reasons.append("\(approvalSteps) approval step\(approvalSteps == 1 ? "" : "s")") }
+            if providerBlocks > 0 {
+                reasons.append("\(providerBlocks) AI block\(providerBlocks == 1 ? "" : "s") that may send input to your external AI provider")
+            }
+            let alert = NSAlert()
+            alert.messageText = "Approve “\(workflow.name)” for this run?"
+            alert.informativeText = "This workflow includes \(reasons.joined(separator: " and ")). Approval applies to this run only."
+            alert.addButton(withTitle: "Approve and Run")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            workflow = workflow.approvedForThisRun()
+        }
+        Task { [weak self, workflow, values] in
+            guard let self else { return }
+            let receipt = await self.workflowExecutionEngine.run(workflow, variableValues: values)
+            if !receipt.succeeded {
+                self.actionController.presentError(receipt.nodes.last?.error ?? "The workflow could not run.")
+            }
+        }
     }
     func confirmPendingAction() { actionController.confirmPending() }
     func cancelPendingAction() { actionController.cancelPending() }

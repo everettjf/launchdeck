@@ -283,3 +283,60 @@ final class WorkflowExecutionEngineTests: XCTestCase {
         XCTAssertTrue(executor.executed.isEmpty)
     }
 }
+
+final class WorkflowRunApprovalTests: XCTestCase {
+    private func approvalWorkflow() -> WorkflowDefinition {
+        let approval = WorkflowNode(kindIdentifier: "logic.approval", configuration: ["approved": .boolean(true)])
+        let summarize = WorkflowNode(kindIdentifier: "ai.summarize",
+                                     configuration: ["providerApproved": .boolean(true), "pccApproved": .boolean(true),
+                                                     "prompt": .text("Summarize"), "input": .text("Notes")])
+        var policy = WorkflowPolicy()
+        policy.dataPolicy = .askEveryTime
+        return WorkflowDefinition(name: "Approvals", nodes: [approval, summarize], policy: policy)
+    }
+
+    func testSavedRecipesNeverCarryRunApprovals() throws {
+        let recipe = Recipe(workflow: approvalWorkflow())
+        let nodes = try XCTUnwrap(recipe.workflow?.nodes)
+        for key in WorkflowDefinition.runApprovalKeys {
+            XCTAssertTrue(nodes.allSatisfy { $0.configuration[key] == nil }, key)
+        }
+        XCTAssertEqual(nodes.last?.configuration["prompt"], .text("Summarize"))
+    }
+
+    func testImportedRecipeJSONWithApprovalsIsStripped() throws {
+        // Simulates a shared file that was crafted (or exported by an older build) with approvals set.
+        let raw = try JSONEncoder().encode(approvalWorkflow())
+        let json = #"{"id":"\#(UUID().uuidString)","name":"Shared","schemaVersion":2,"workflow":\#(String(decoding: raw, as: UTF8.self))}"#
+        let recipe = try JSONDecoder().decode(Recipe.self, from: Data(json.utf8))
+        let nodes = try XCTUnwrap(recipe.workflow?.nodes)
+        XCTAssertTrue(nodes.allSatisfy { node in WorkflowDefinition.runApprovalKeys.allSatisfy { node.configuration[$0] == nil } })
+    }
+
+    @MainActor
+    func testRecipeStoreImportStripsApprovals() throws {
+        let suite = "RecipeApprovalImport.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let raw = try JSONEncoder().encode(approvalWorkflow())
+        let json = #"[{"id":"\#(UUID().uuidString)","name":"Shared","schemaVersion":2,"workflow":\#(String(decoding: raw, as: UTF8.self))}]"#
+        let store = RecipeStore(defaults: defaults)
+        try store.importData(Data(json.utf8))
+        let exported = String(decoding: try store.exportData(), as: UTF8.self)
+        XCTAssertFalse(exported.contains("providerApproved"))
+        XCTAssertFalse(exported.contains("\"approved\""))
+    }
+
+    func testApprovalCountsAndPerRunApproval() {
+        let stripped = approvalWorkflow().strippingRunApprovals()
+        XCTAssertEqual(stripped.approvalStepCount, 1)
+        XCTAssertEqual(stripped.providerApprovalNodeCount, 1)
+        let approved = stripped.approvedForThisRun()
+        XCTAssertEqual(approved.nodes[0].configuration["approved"], .boolean(true))
+        XCTAssertEqual(approved.nodes[1].configuration["providerApproved"], .boolean(true))
+
+        var localOnly = stripped
+        localOnly.policy.dataPolicy = .localOnly
+        XCTAssertEqual(localOnly.providerApprovalNodeCount, 0)
+    }
+}

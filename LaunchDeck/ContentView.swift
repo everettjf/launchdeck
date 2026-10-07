@@ -488,6 +488,10 @@ struct ContentView: View {
     }
 
     private func run(_ recipe: Recipe, values: [String: String]) {
+        if recipe.workflow != nil {
+            appState.runRecipe(recipe, values: values)
+            return
+        }
         guard case .resolved(let steps) = RecipeVariableResolver.resolve(
             steps: recipe.steps, variables: recipe.variables, values: values
         ) else { return }

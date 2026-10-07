@@ -240,6 +240,48 @@ nonisolated struct WorkflowDefinition: Codable, Hashable, Identifiable, Sendable
     }
 }
 
+extension WorkflowDefinition {
+    /// Node configuration keys that grant approval. They are valid for a single run only and
+    /// are never persisted, exported or imported, so a shared workflow cannot arrive approved.
+    static let runApprovalKeys = ["approved", "providerApproved", "pccApproved"]
+
+    func strippingRunApprovals() -> WorkflowDefinition {
+        var copy = self
+        for index in copy.nodes.indices {
+            for key in Self.runApprovalKeys { copy.nodes[index].configuration[key] = nil }
+        }
+        return copy
+    }
+
+    /// Enabled approval steps that will stop the run unless the user approves them.
+    var approvalStepCount: Int {
+        nodes.filter { $0.isEnabled && $0.kindIdentifier == "logic.approval" }.count
+    }
+
+    /// Enabled AI blocks whose effective data policy asks before sending input to a provider.
+    var providerApprovalNodeCount: Int {
+        nodes.filter { node in
+            guard node.isEnabled, node.kindIdentifier.hasPrefix("ai.") else { return false }
+            let dataPolicy = node.configuration["dataPolicy"]?.stringValue.flatMap(WorkflowDataPolicy.init(rawValue:))
+                ?? policy.dataPolicy
+            return dataPolicy == .askEveryTime
+        }.count
+    }
+
+    /// A copy approved for one run, after the user confirmed it.
+    func approvedForThisRun() -> WorkflowDefinition {
+        var copy = self
+        for index in copy.nodes.indices where copy.nodes[index].isEnabled {
+            if copy.nodes[index].kindIdentifier == "logic.approval" {
+                copy.nodes[index].configuration["approved"] = .boolean(true)
+            } else if copy.nodes[index].kindIdentifier.hasPrefix("ai.") {
+                copy.nodes[index].configuration["providerApproved"] = .boolean(true)
+            }
+        }
+        return copy
+    }
+}
+
 nonisolated struct WorkflowNodeDefinition: Identifiable, Hashable, Sendable {
     enum Category: String, CaseIterable, Sendable { case input, action, ai, logic, data, output }
     let id: String
