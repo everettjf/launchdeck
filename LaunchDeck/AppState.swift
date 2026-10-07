@@ -405,13 +405,17 @@ final class AppState: ObservableObject {
         let targetValue: String?
         if action == .paste { targetValue = sources.first?.applicationIdentifier }
         else { targetValue = target?.value }
-        do {
-            if let undo = try objectActionPerformer.execute(kind: kind, sources: sources.map(\.value), target: targetValue) {
-                objectUndoManager.registerUndo(withTarget: self) { state in state.undoObjectAction(undo) }
-                objectUndoManager.setActionName(undo.title)
-            }
-            refreshLocalContent()
-        } catch { actionController.presentError(error.localizedDescription) }
+        Task { [weak self, objectActionPerformer] in
+            do {
+                let undo = try await objectActionPerformer.execute(kind: kind, sources: sources.map(\.value), target: targetValue)
+                guard let self else { return }
+                if let undo {
+                    self.objectUndoManager.registerUndo(withTarget: self) { state in state.undoObjectAction(undo) }
+                    self.objectUndoManager.setActionName(undo.title)
+                }
+                self.refreshLocalContent()
+            } catch { self?.actionController.presentError(error.localizedDescription) }
+        }
     }
 
     func undoLastObjectAction() {
@@ -524,7 +528,7 @@ final class AppState: ObservableObject {
         case .rename:
             guard let url = item.fileSystemURL,
                   let name = prompt(title: "Rename \(url.lastPathComponent)", message: "Enter a new name:", value: url.lastPathComponent) else { return }
-            runFileOperation { _ = try fileOperationService.rename(url, to: name) }
+            runFileOperation { [fileOperationService] in _ = try fileOperationService.rename(url, to: name) }
         case .move:
             guard let url = item.fileSystemURL else { return }
             let panel = NSOpenPanel()
@@ -536,17 +540,17 @@ final class AppState: ObservableObject {
                 panel.directoryURL = URL(fileURLWithPath: recent)
             }
             guard panel.runModal() == .OK, let destination = panel.url else { return }
-            runFileOperation { _ = try fileOperationService.move([url], to: destination) }
+            runFileOperation { [fileOperationService] in _ = try fileOperationService.move([url], to: destination) }
         case .duplicate:
             guard let url = item.fileSystemURL else { return }
-            runFileOperation { _ = try fileOperationService.duplicate(url) }
+            runFileOperation { [fileOperationService] in _ = try fileOperationService.duplicate(url) }
         case .compress:
             guard let url = item.fileSystemURL else { return }
-            runFileOperation { _ = try fileOperationService.compress(url) }
+            runFileOperation { [fileOperationService] in _ = try await fileOperationService.compress(url) }
         case .tag:
             guard let url = item.fileSystemURL,
                   let value = prompt(title: "Set Finder Tags", message: "Enter comma-separated tags:", value: "") else { return }
-            runFileOperation {
+            runFileOperation { [fileOperationService] in
                 try fileOperationService.setTags(value.split(separator: ",").map(String.init), on: [url])
             }
         case .trash:
@@ -557,7 +561,7 @@ final class AppState: ObservableObject {
             alert.addButton(withTitle: "Move to Trash")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            runFileOperation { try fileOperationService.moveToTrash([url]) }
+            runFileOperation { [fileOperationService] in try fileOperationService.moveToTrash([url]) }
         case .paste:
             guard case .clipboardEntry(let identifier) = item.target,
                   let entry = clipboardStore.entries.first(where: { $0.id == identifier }) else { return }
@@ -565,13 +569,15 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func runFileOperation(_ operation: () throws -> Void) {
-        do {
-            try operation()
-            refreshLocalContent()
-        } catch {
-            let alert = NSAlert(error: error)
-            alert.runModal()
+    private func runFileOperation(_ operation: @escaping () async throws -> Void) {
+        Task { [weak self] in
+            do {
+                try await operation()
+                self?.refreshLocalContent()
+            } catch {
+                let alert = NSAlert(error: error)
+                alert.runModal()
+            }
         }
     }
 

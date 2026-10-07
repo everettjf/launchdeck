@@ -77,9 +77,9 @@ final class CompetitiveWorkflowTests: XCTestCase {
     }
 
     // 7 — LaunchBar compression: batch ZIP output is undoable.
-    func test07BatchCompressAndUndo() throws {
+    func test07BatchCompressAndUndo() async throws {
         let service = FileOperationService(defaults: defaults), sources = try [file("a.txt"), file("b.txt")]
-        let undo = try service.compressWithUndo(sources)
+        let undo = try await service.compressWithUndo(sources)
         XCTAssertEqual(undo.createdURLs.count, 2)
         try service.undo(undo)
     }

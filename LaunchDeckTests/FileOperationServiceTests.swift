@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class FileOperationServiceTests: XCTestCase {
-    func testRenameDuplicateMoveCompressAndRecentDestination() throws {
+    func testRenameDuplicateMoveCompressAndRecentDestination() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("FileOperationTests-\(UUID())")
         let sourceDirectory = root.appendingPathComponent("source")
         let destinationDirectory = root.appendingPathComponent("destination")
@@ -20,7 +20,7 @@ final class FileOperationServiceTests: XCTestCase {
         let renamed = try service.rename(original, to: "renamed.txt")
         let duplicate = try service.duplicate(renamed)
         XCTAssertTrue(FileManager.default.fileExists(atPath: duplicate.path))
-        let archive = try service.compress(renamed)
+        let archive = try await service.compress(renamed)
         XCTAssertTrue(FileManager.default.fileExists(atPath: archive.path))
         let moved = try service.move([duplicate], to: destinationDirectory)
         XCTAssertEqual(moved.first?.deletingLastPathComponent().standardizedFileURL.path,
@@ -56,5 +56,25 @@ final class FileOperationServiceTests: XCTestCase {
         XCTAssertFalse(service.recentDestinationPaths.isEmpty)
         service.clearRecentDestinations()
         XCTAssertTrue(service.recentDestinationPaths.isEmpty)
+    }
+
+    func testProcessRunnerDrainsLargeStandardErrorWithoutDeadlock() async throws {
+        // More than a pipe buffer (64 KB) of stderr would hang a wait-then-read implementation.
+        let result = try await ProcessRunner.run(executable: "/bin/sh",
+                                                 arguments: ["-c", "head -c 300000 /dev/zero | tr '\\0' x >&2; exit 3"])
+        XCTAssertEqual(result.status, 3)
+        XCTAssertEqual(result.standardError.count, 300_000)
+    }
+
+    func testProcessRunnerTerminatesOnCancellation() async throws {
+        let task = Task { try await ProcessRunner.run(executable: "/bin/sleep", arguments: ["30"]) }
+        try await Task.sleep(for: .milliseconds(100))
+        let started = Date()
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {}
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
 }

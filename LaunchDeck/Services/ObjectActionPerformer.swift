@@ -7,7 +7,7 @@ struct ObjectActionPerformer {
 
     init(files: FileOperationService = FileOperationService()) { self.files = files }
 
-    func execute(kind: RecipeStep.ObjectActionKind, sources: [String], target: String?) throws -> FileUndoRecord? {
+    func execute(kind: RecipeStep.ObjectActionKind, sources: [String], target: String?) async throws -> FileUndoRecord? {
         let fileURLs = sources.filter { FileManager.default.fileExists(atPath: $0) }.map(URL.init(fileURLWithPath:))
         switch kind {
         case .open:
@@ -27,12 +27,12 @@ struct ObjectActionPerformer {
             guard let target else { throw FileOperationError.commandFailed("Choose an application target.") }
             let applicationURL = URL(fileURLWithPath: target)
             let configuration = NSWorkspace.OpenConfiguration()
-            NSWorkspace.shared.open(fileURLs, withApplicationAt: applicationURL, configuration: configuration)
+            NSWorkspace.shared.open(fileURLs, withApplicationAt: applicationURL, configuration: configuration, completionHandler: nil)
         case .move:
             guard let target else { throw FileOperationError.commandFailed("Choose a destination folder.") }
             return try files.moveWithUndo(fileURLs, to: URL(fileURLWithPath: target))
         case .duplicate: return try files.duplicateWithUndo(fileURLs)
-        case .compress: return try files.compressWithUndo(fileURLs)
+        case .compress: return try await files.compressWithUndo(fileURLs)
         case .trash: return try files.moveToTrash(fileURLs)
         }
         return nil

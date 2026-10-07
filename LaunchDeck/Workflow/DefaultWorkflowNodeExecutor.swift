@@ -80,9 +80,8 @@ final class DefaultWorkflowNodeExecutor: WorkflowNodeExecuting {
         case "action.run-shortcut":
             guard let name = inputs["shortcut"]?.stringValue else { throw ExecutionError.missingInput("Shortcut") }
             guard approvedShortcutsProvider().contains(name) else { throw ExecutionError.permissionDenied("Shortcut “\(name)” is not approved") }
-            let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts"); process.arguments = ["run", name]
-            try process.run(); process.waitUntilExit()
-            guard process.terminationStatus == 0 else { throw ExecutionError.unsupported("Shortcut failed") }
+            let result = try await ProcessRunner.run(executable: "/usr/bin/shortcuts", arguments: ["run", name])
+            guard result.succeeded else { throw ExecutionError.unsupported("Shortcut failed") }
             return deterministic(["control": .none])
         case let identifier where identifier.hasPrefix("ai."):
             let task = String(identifier.dropFirst(3))
@@ -96,12 +95,12 @@ final class DefaultWorkflowNodeExecutor: WorkflowNodeExecuting {
                                               providerApproved: approved)
             return .init(outputs: ["result": result.value, "control": .none], route: result.route, undoOperation: nil)
         case let identifier where identifier.hasPrefix("action."):
-            return try executeAction(identifier: identifier, inputs: inputs)
+            return try await executeAction(identifier: identifier, inputs: inputs)
         default: throw ExecutionError.unsupported(node.kindIdentifier)
         }
     }
 
-    private func executeAction(identifier: String, inputs: [String: WorkflowValue]) throws -> WorkflowNodeExecutionResult {
+    private func executeAction(identifier: String, inputs: [String: WorkflowValue]) async throws -> WorkflowNodeExecutionResult {
         let objects = objects(from: inputs["objects"] ?? .collection([]))
         let sources = objects.map(\.value)
         let target = inputs["target"]?.stringValue
@@ -119,7 +118,7 @@ final class DefaultWorkflowNodeExecutor: WorkflowNodeExecuting {
         default: throw ExecutionError.unsupported(identifier)
         }
         if sources.isEmpty { throw ExecutionError.missingInput("Objects") }
-        let undo = try performer.execute(kind: kind, sources: sources, target: target)
+        let undo = try await performer.execute(kind: kind, sources: sources, target: target)
         return .init(outputs: ["objects": .collection(objects.map(WorkflowValue.object)), "control": .none],
                      route: .deterministic, undoOperation: undo.map(WorkflowUndoOperation.init))
     }

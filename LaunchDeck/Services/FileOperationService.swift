@@ -104,27 +104,29 @@ struct FileOperationService {
                               moves: [], createdURLs: created)
     }
 
-    func compress(_ source: URL) throws -> URL {
+    func compress(_ source: URL) async throws -> URL {
         try requireSource(source)
         let destination = source.deletingPathExtension().appendingPathExtension("zip")
         try requireAbsent(destination)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", source.path, destination.path]
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            throw FileOperationError.commandFailed(String(decoding: data, as: UTF8.self))
+        let result: ProcessRunner.Result
+        do {
+            result = try await ProcessRunner.run(executable: "/usr/bin/ditto", arguments: [
+                "-c", "-k", "--sequesterRsrc", "--keepParent", source.path, destination.path
+            ])
+        } catch {
+            try? fileManager.removeItem(at: destination)
+            throw error
+        }
+        guard result.succeeded else {
+            try? fileManager.removeItem(at: destination)
+            throw FileOperationError.commandFailed(result.standardError)
         }
         return destination
     }
 
-    func compressWithUndo(_ sources: [URL]) throws -> FileUndoRecord {
+    func compressWithUndo(_ sources: [URL]) async throws -> FileUndoRecord {
         var created: [URL] = []
-        do { for source in sources { created.append(try compress(source)) } }
+        do { for source in sources { created.append(try await compress(source)) } }
         catch {
             created.reversed().forEach { try? fileManager.removeItem(at: $0) }
             throw error

@@ -72,7 +72,7 @@ final class ActionController: ObservableObject {
             complete(action, succeeded: NSWorkspace.shared.open(destination.url))
         case .runShortcut(let name):
             Task { [weak self] in
-                let succeeded = await Self.runProcess(executable: "/usr/bin/shortcuts", arguments: ["run", name])
+                let succeeded = (try? await ProcessRunner.run(executable: "/usr/bin/shortcuts", arguments: ["run", name]))?.succeeded ?? false
                 self?.complete(action, succeeded: succeeded)
             }
         case .openFile(let path, let applicationIdentifier, _):
@@ -119,11 +119,13 @@ final class ActionController: ObservableObject {
                 self?.complete(action, succeeded: true)
             }
         case .objectAction(let kind, let sources, let target):
-            do {
-                _ = try objectActionPerformer.execute(kind: kind, sources: sources, target: target)
-                complete(action, succeeded: true)
-            } catch {
-                fail(action, message: error.localizedDescription)
+            Task { [weak self, objectActionPerformer] in
+                do {
+                    _ = try await objectActionPerformer.execute(kind: kind, sources: sources, target: target)
+                    self?.complete(action, succeeded: true)
+                } catch {
+                    self?.fail(action, message: error.localizedDescription)
+                }
             }
         }
     }
@@ -168,26 +170,16 @@ final class ActionController: ObservableObject {
                 }
             }
         case .runShortcut(let name):
-            return await Self.runProcess(executable: "/usr/bin/shortcuts", arguments: ["run", name])
+            return (try? await ProcessRunner.run(executable: "/usr/bin/shortcuts", arguments: ["run", name]))?.succeeded ?? false
         case .wait(let seconds):
             try? await Task.sleep(for: .seconds(max(0, seconds)))
             return true
         case .objectAction(let kind, let sources, let target):
             do {
-                _ = try objectActionPerformer.execute(kind: kind, sources: sources, target: target)
+                _ = try await objectActionPerformer.execute(kind: kind, sources: sources, target: target)
                 return true
             } catch { return false }
         default: return false
-        }
-    }
-
-    private nonisolated static func runProcess(executable: String, arguments: [String]) async -> Bool {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            process.terminationHandler = { process in continuation.resume(returning: process.terminationStatus == 0) }
-            do { try process.run() } catch { continuation.resume(returning: false) }
         }
     }
 
