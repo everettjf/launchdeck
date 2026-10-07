@@ -340,3 +340,82 @@ final class WorkflowRunApprovalTests: XCTestCase {
         XCTAssertEqual(localOnly.providerApprovalNodeCount, 0)
     }
 }
+
+final class WorkflowAISafetyTests: XCTestCase {
+    final class AIProducerExecutor: WorkflowNodeExecuting {
+        let generated: String
+        var executedTitles: [String] = []
+        init(generated: String) { self.generated = generated }
+        func execute(node: WorkflowNode, inputs: [String: WorkflowValue], workflow: WorkflowDefinition) async throws -> WorkflowNodeExecutionResult {
+            executedTitles.append(node.title)
+            if node.title == "Name" { return .init(outputs: ["result": .text(generated), "control": .none], route: .onDevice, undoOperation: nil) }
+            return .init(outputs: ["value": inputs["value"] ?? .none, "control": .none], route: .deterministic, undoOperation: nil)
+        }
+    }
+
+    private func workflow() -> WorkflowDefinition {
+        let name = WorkflowNode(kindIdentifier: "input.clipboard", title: "Name", outputVariable: "name")
+        let folder = WorkflowNode(kindIdentifier: "logic.delay", title: "Folder", configuration: ["seconds": .number(0), "value": .folder("/tmp/{{name}}")])
+        return WorkflowDefinition(name: "AI path", nodes: [name, folder], edges: [
+            .init(sourceNodeID: name.id, sourcePortID: "control", targetNodeID: folder.id, targetPortID: "control")
+        ])
+    }
+
+    @MainActor
+    func testAIOutputCannotTraverseOutOfAFilePath() async {
+        let executor = AIProducerExecutor(generated: "../../Users/me/Documents")
+        let engine = WorkflowExecutionEngine(executor: executor, receiptStore: WorkflowReceiptStore(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+        let receipt = await engine.run(workflow())
+        XCTAssertFalse(receipt.succeeded)
+        XCTAssertEqual(executor.executedTitles, ["Name"])
+        XCTAssertTrue(receipt.nodes.last?.error?.contains("plain file name") == true)
+    }
+
+    @MainActor
+    func testPlainAIFileNameIsAllowedInAPath() async {
+        let executor = AIProducerExecutor(generated: "Quarterly Report")
+        let engine = WorkflowExecutionEngine(executor: executor, receiptStore: WorkflowReceiptStore(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+        let receipt = await engine.run(workflow())
+        XCTAssertTrue(receipt.succeeded)
+        XCTAssertEqual(executor.executedTitles, ["Name", "Folder"])
+    }
+
+    func testGuardRules() {
+        XCTAssertTrue(AIDerivedValueGuard.isSafePathComponent("Invoice 2026.pdf"))
+        for unsafe in ["", ".", "..", "a/b", "~root", "line\nbreak", "C:evil"] {
+            XCTAssertFalse(AIDerivedValueGuard.isSafePathComponent(unsafe), unsafe)
+        }
+        XCTAssertTrue(AIDerivedValueGuard.isSafeExistingPath(NSTemporaryDirectory()))
+        XCTAssertFalse(AIDerivedValueGuard.isSafeExistingPath("/tmp/../etc"))
+        XCTAssertFalse(AIDerivedValueGuard.isSafeExistingPath("relative/path"))
+        XCTAssertEqual(AIDerivedValueGuard.encodedForURL("a b&c=d/e?#"), "a%20b%26c%3Dd%2Fe%3F%23")
+    }
+}
+
+@MainActor
+final class ObjectActionSafetyTests: XCTestCase {
+    func testOpenRefusesNonWebSchemes() {
+        XCTAssertThrowsError(try ObjectActionPerformer.openTarget("file:///tmp/run.command"))
+        XCTAssertThrowsError(try ObjectActionPerformer.openTarget("x-launch://do-something"))
+        XCTAssertEqual(try ObjectActionPerformer.openTarget("https://example.com").host, "example.com")
+        XCTAssertTrue(try ObjectActionPerformer.openTarget(NSTemporaryDirectory()).isFileURL)
+    }
+
+    func testFileActionsFailWhenASourceIsMissing() async throws {
+        let present = FileManager.default.temporaryDirectory.appendingPathComponent("present-\(UUID().uuidString).txt")
+        try Data("x".utf8).write(to: present)
+        defer { try? FileManager.default.removeItem(at: present) }
+        let missing = "/tmp/missing-\(UUID().uuidString).txt"
+        do {
+            _ = try await ObjectActionPerformer().execute(kind: .duplicate, sources: [present.path, missing], target: nil)
+            XCTFail("Expected a missing-source error")
+        } catch let error as FileOperationError {
+            XCTAssertEqual(error, .missingSource(missing))
+        }
+    }
+
+    func testObjectStepSummaryNamesItems() {
+        let step = RecipeStep.objectAction(.open, sources: ["/Users/me/a.pdf", "https://example.com", "/b.txt", "/c.txt"])
+        XCTAssertEqual(step.summary, "Open a.pdf, https://example.com, b.txt and 1 more")
+    }
+}

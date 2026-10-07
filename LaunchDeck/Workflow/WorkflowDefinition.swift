@@ -240,7 +240,7 @@ nonisolated struct WorkflowDefinition: Codable, Hashable, Identifiable, Sendable
     }
 }
 
-extension WorkflowDefinition {
+nonisolated extension WorkflowDefinition {
     /// Node configuration keys that grant approval. They are valid for a single run only and
     /// are never persisted, exported or imported, so a shared workflow cannot arrive approved.
     static let runApprovalKeys = ["approved", "providerApproved", "pccApproved"]

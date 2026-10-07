@@ -72,7 +72,12 @@ nonisolated struct RecipeStep: Codable, Hashable, Identifiable, Sendable {
         case .runShortcut(let name): return "Run Shortcut “\(name)”"
         case .delay(let seconds): return "Wait \(seconds.formatted()) seconds"
         case .objectAction(let kind, let sources, let target):
-            return "\(kind.rawValue.capitalized) \(sources.count) item\(sources.count == 1 ? "" : "s")\(target.map { " → \($0)" } ?? "")"
+            // Name the items so a confirmation preview shows what will be acted on.
+            let names = sources.prefix(3).map { source in
+                source.hasPrefix("/") ? URL(fileURLWithPath: source).lastPathComponent : String(source.prefix(60))
+            }
+            let more = sources.count > 3 ? " and \(sources.count - 3) more" : ""
+            return "\(kind.rawValue.capitalized) \(names.joined(separator: ", "))\(more)\(target.map { " → \($0)" } ?? "")"
         }
     }
 

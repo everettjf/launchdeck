@@ -6,9 +6,11 @@ enum FileOperationError: LocalizedError, Equatable {
     case invalidName
     case destinationExists(String)
     case commandFailed(String)
+    case unsupportedLink(String)
 
     var errorDescription: String? {
         switch self {
+        case .unsupportedLink(let value): "Only existing files and HTTP or HTTPS links can be opened: \(value)"
         case .missingSource(let path): "The source no longer exists: \(path)"
         case .invalidName: "Enter a valid file name without path separators."
         case .destinationExists(let path): "An item already exists at \(path)."

@@ -171,7 +171,8 @@ final class WorkflowExecutionEngine: ObservableObject {
         let task = Task { await performRun(workflow, variableValues: variableValues) }
         activeTask = task
         let receipt = await task.value
-        activeTask = nil
+        // A newer run may have replaced this one; keep its task so Cancel still reaches it.
+        if activeTask == task { activeTask = nil }
         return receipt
     }
 
@@ -194,7 +195,10 @@ final class WorkflowExecutionEngine: ObservableObject {
         var outputs: [UUID: [String: WorkflowValue]] = [:]
         var undo: [WorkflowUndoOperation] = []
         let nodes = Dictionary(uniqueKeysWithValues: workflow.nodes.map { ($0.id, $0) })
-        var runtimeVariables = Dictionary(uniqueKeysWithValues: workflow.variables.map { ($0.name, $0.defaultValue) })
+        var runtimeVariables = Dictionary(workflow.variables.map { ($0.name, $0.defaultValue) }, uniquingKeysWith: { first, _ in first })
+        // Model output is untrusted: track where it flows so it cannot silently become a path or URL.
+        var aiDerivedVariables = Set<String>()
+        var aiDerivedNodeIDs = Set<UUID>()
         runtimeVariables.merge(variableValues) { _, supplied in supplied }
         let missingVariables = requiredVariables(in: workflow).filter { runtimeVariables[$0, default: ""].isEmpty }
         if !missingVariables.isEmpty {
@@ -211,7 +215,17 @@ final class WorkflowExecutionEngine: ObservableObject {
                               rolledBack: rolledBack, nodes: nodeReceipts, undo: undo)
             }
             guard let storedNode = nodes[nodeID], storedNode.isEnabled else { continue }
-            let node = resolved(node: storedNode, variables: runtimeVariables)
+            if let violation = AIDerivedValueGuard.variableViolation(in: storedNode, variables: runtimeVariables,
+                                                                     aiDerived: aiDerivedVariables) {
+                nodeReceipts.append(.init(id: UUID(), nodeID: storedNode.id, title: storedNode.title, startedAt: .now,
+                                          duration: 0, outcome: "failed", route: .deterministic,
+                                          outputTypes: [:], error: violation))
+                let rolledBack = workflow.policy.rollbackOnFailure && rollback(undo)
+                state = .failed(violation)
+                return finish(workflow, id: receiptID, startedAt: startedAt, succeeded: false,
+                              rolledBack: rolledBack, nodes: nodeReceipts, undo: undo)
+            }
+            let node = resolved(node: storedNode, variables: runtimeVariables, aiDerived: aiDerivedVariables)
             guard RecipeRunner.conditionMatches(node.condition) else {
                 nodeReceipts.append(.init(id: UUID(), nodeID: node.id, title: node.title, startedAt: .now,
                                           duration: 0, outcome: "skipped", route: .deterministic,
@@ -223,11 +237,19 @@ final class WorkflowExecutionEngine: ObservableObject {
             let inputs = resolvedInputs(for: node, workflow: workflow, outputs: outputs)
             let toolIDs = WorkflowNodeCatalog.definition(for: node.kindIdentifier)?.requiredToolIDs ?? []
             do {
+                if WorkflowNodeCatalog.definition(for: node.kindIdentifier)?.isMutating == true {
+                    try AIDerivedValueGuard.checkMutatingInputs(of: node, workflow: workflow, outputs: outputs,
+                                                                aiDerivedNodeIDs: aiDerivedNodeIDs)
+                }
                 let result = try await executeWithRetry(node: node, inputs: inputs, workflow: workflow)
                 outputs[nodeID] = result.outputs
+                let isAIDerived = result.route != .deterministic
+                    || workflow.edges.contains { $0.targetNodeID == nodeID && aiDerivedNodeIDs.contains($0.sourceNodeID) }
+                if isAIDerived { aiDerivedNodeIDs.insert(nodeID) }
                 if let outputVariable = node.outputVariable,
                    let value = result.outputs.keys.sorted().filter({ $0 != "control" }).compactMap({ result.outputs[$0]?.stringValue }).first {
                     runtimeVariables[outputVariable] = value
+                    if isAIDerived { aiDerivedVariables.insert(outputVariable) } else { aiDerivedVariables.remove(outputVariable) }
                 }
                 if let operation = result.undoOperation { undo.append(operation) }
                 nodeReceipts.append(.init(id: UUID(), nodeID: node.id, title: node.title, startedAt: nodeStartedAt,
@@ -281,9 +303,15 @@ final class WorkflowExecutionEngine: ObservableObject {
         return values
     }
 
-    private func resolved(node: WorkflowNode, variables: [String: String]) -> WorkflowNode {
+    private func resolved(node: WorkflowNode, variables: [String: String], aiDerived: Set<String> = []) -> WorkflowNode {
         var result = node
-        result.configuration = node.configuration.mapValues { substitute($0, variables: variables) }
+        // Model output placed in a URL is percent-encoded so it cannot add a scheme, host or query.
+        var urlVariables = variables
+        for name in aiDerived { urlVariables[name] = variables[name].map(AIDerivedValueGuard.encodedForURL) }
+        result.configuration = node.configuration.mapValues { value in
+            if case .url(let raw) = value { return .url(RecipeVariableResolver.substitute(raw, replacements: urlVariables)) }
+            return substitute(value, variables: variables)
+        }
         switch node.condition {
         case .fileExists(let path): result.condition = .fileExists(path: RecipeVariableResolver.substitute(path, replacements: variables))
         case .applicationRunning(let identifier): result.condition = .applicationRunning(identifier: RecipeVariableResolver.substitute(identifier, replacements: variables))
@@ -373,5 +401,79 @@ final class WorkflowExecutionEngine: ObservableObject {
                                                succeeded: false, wasRolledBack: false, wasUndone: false, nodes: [], undoOperations: [])
         receiptStore.save(receipt)
         return receipt
+    }
+}
+
+/// Keeps model output from steering file operations. Output substituted into a file or folder
+/// field must be a single plain name, and output wired into a mutating action must be an
+/// existing absolute path with no `..` segments.
+nonisolated enum AIDerivedValueGuard {
+    static func isSafePathComponent(_ value: String) -> Bool {
+        !value.isEmpty && value.count <= 255 && value != "." && value != ".." && !value.hasPrefix("~")
+            && !value.contains(where: { $0 == "/" || $0 == ":" || $0.isNewline || $0 == "\0" })
+    }
+
+    static func isSafeExistingPath(_ value: String) -> Bool {
+        guard value.hasPrefix("/"), !value.contains(where: { $0.isNewline || $0 == "\0" }),
+              !value.split(separator: "/").contains("..") else { return false }
+        return FileManager.default.fileExists(atPath: value)
+    }
+
+    static func encodedForURL(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? ""
+    }
+
+    static func variableViolation(in node: WorkflowNode, variables: [String: String], aiDerived: Set<String>) -> String? {
+        guard !aiDerived.isEmpty else { return nil }
+        func pathTemplates(_ value: WorkflowValue) -> [String] {
+            switch value {
+            case .file(let path), .folder(let path): [path]
+            case .application(_, let path): [path]
+            case .object(let object) where [.file, .folder].contains(object.kind): [object.value]
+            case .collection(let values): values.flatMap(pathTemplates)
+            case .structured(let values): values.values.flatMap(pathTemplates)
+            default: []
+            }
+        }
+        let templates = node.configuration.values.flatMap(pathTemplates)
+        for name in aiDerived.sorted() {
+            guard templates.contains(where: { references($0, variable: name) }),
+                  let value = variables[name], !isSafePathComponent(value) else { continue }
+            return "AI output “\(name)” cannot be used in a file path because it is not a plain file name."
+        }
+        return nil
+    }
+
+    static func checkMutatingInputs(of node: WorkflowNode, workflow: WorkflowDefinition,
+                                    outputs: [UUID: [String: WorkflowValue]], aiDerivedNodeIDs: Set<UUID>) throws {
+        for edge in workflow.edges where edge.targetNodeID == node.id && aiDerivedNodeIDs.contains(edge.sourceNodeID) {
+            guard edge.targetPortID != "control", let value = outputs[edge.sourceNodeID]?[edge.sourcePortID] else { continue }
+            for path in paths(in: value) where !isSafeExistingPath(path) {
+                throw WorkflowAISafetyError(port: edge.targetPortID, value: String(path.prefix(80)))
+            }
+        }
+    }
+
+    private static func paths(in value: WorkflowValue) -> [String] {
+        switch value {
+        case .text(let path), .file(let path), .folder(let path), .url(let path): [path]
+        case .application(_, let path): [path]
+        case .object(let object): [object.value]
+        case .collection(let values): values.flatMap(paths)
+        case .structured(let values): values.values.flatMap(paths)
+        default: []
+        }
+    }
+
+    private static func references(_ template: String, variable: String) -> Bool {
+        RecipeVariableResolver.substitute(template, replacements: [variable: "\u{1}"]) != template
+    }
+}
+
+nonisolated struct WorkflowAISafetyError: LocalizedError {
+    let port: String
+    let value: String
+    var errorDescription: String? {
+        "AI output for “\(port)” must be an existing absolute path before a file action can use it (got “\(value)”)."
     }
 }

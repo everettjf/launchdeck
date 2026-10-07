@@ -9,12 +9,15 @@ struct ObjectActionPerformer {
 
     func execute(kind: RecipeStep.ObjectActionKind, sources: [String], target: String?) async throws -> FileUndoRecord? {
         let fileURLs = sources.filter { FileManager.default.fileExists(atPath: $0) }.map(URL.init(fileURLWithPath:))
+        // File actions must not report success after quietly dropping a source that vanished.
+        if [.reveal, .openWith, .move, .duplicate, .compress, .trash].contains(kind),
+           let missing = sources.first(where: { !FileManager.default.fileExists(atPath: $0) }) {
+            throw FileOperationError.missingSource(missing)
+        }
         switch kind {
         case .open:
-            sources.forEach { value in
-                if FileManager.default.fileExists(atPath: value) { NSWorkspace.shared.open(URL(fileURLWithPath: value)) }
-                else if let url = URL(string: value) { NSWorkspace.shared.open(url) }
-            }
+            let targets = try sources.map(Self.openTarget)
+            targets.forEach { NSWorkspace.shared.open($0) }
         case .reveal:
             guard !fileURLs.isEmpty else { throw FileOperationError.commandFailed("Reveal requires a file or folder.") }
             NSWorkspace.shared.activateFileViewerSelecting(fileURLs)
@@ -36,6 +39,16 @@ struct ObjectActionPerformer {
         case .trash: return try files.moveToTrash(fileURLs)
         }
         return nil
+    }
+
+    /// Resolves an Open source to an existing file or a web link. Other schemes (`file:` URLs to
+    /// scripts, custom app schemes) could run code, so they are refused.
+    static func openTarget(_ value: String) throws -> URL {
+        if FileManager.default.fileExists(atPath: value) { return URL(fileURLWithPath: value) }
+        guard let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+            throw FileOperationError.unsupportedLink(String(value.prefix(120)))
+        }
+        return url
     }
 
     private func writePasteboard(sources: [String]) {
