@@ -6,11 +6,13 @@ import LaunchDeckCore
 private nonisolated let logger = Logger(subsystem: "LaunchDeck", category: "DirectoryMonitor")
 
 /// Monitors application directories for changes using FSEvents API.
-/// nonisolated: FSEvents callbacks arrive on a private dispatch queue, and the
-/// monitor's state is only touched from that queue or the main thread.
+/// nonisolated: FSEvents callbacks arrive on a private serial queue, and every piece of
+/// mutable state (stream, debounce item, pending paths) is only touched on that queue.
 nonisolated final class ApplicationDirectoryMonitor {
     private var eventStream: FSEventStreamRef?
+    private var callbackBox: Unmanaged<CallbackBox>?
     private let queue = DispatchQueue(label: "com.launchdeck.directorymonitor", qos: .utility)
+    private let queueKey = DispatchSpecificKey<Void>()
     private let callback: ([String]) -> Void
     private var debounceWorkItem: DispatchWorkItem?
     private var pendingChangedAppPaths = Set<String>()
@@ -47,19 +49,36 @@ nonisolated final class ApplicationDirectoryMonitor {
         }
 
         self.monitoredPaths = paths
+        queue.setSpecific(key: queueKey, value: ())
+    }
+
+    /// FSEvents holds this box rather than the monitor itself, so a callback that races with
+    /// deallocation sees nil instead of a dangling pointer.
+    private final class CallbackBox {
+        weak var monitor: ApplicationDirectoryMonitor?
+        init(_ monitor: ApplicationDirectoryMonitor) { self.monitor = monitor }
+    }
+
+    private func onQueue(_ work: () -> Void) {
+        if DispatchQueue.getSpecific(key: queueKey) != nil { work() } else { queue.sync(execute: work) }
     }
 
     /// Start monitoring the application directories
     func startMonitoring() {
+        onQueue(startOnQueue)
+    }
+
+    private func startOnQueue() {
         guard eventStream == nil else {
             return
         }
+        let box = Unmanaged.passRetained(CallbackBox(self))
 
         let pathsToWatch = monitoredPaths as CFArray
 
         var context = FSEventStreamContext(
             version: 0,
-            info: Unmanaged.passUnretained(self).toOpaque(),
+            info: box.toOpaque(),
             retain: nil,
             release: nil,
             copyDescription: nil
@@ -74,7 +93,7 @@ nonisolated final class ApplicationDirectoryMonitor {
             eventIds
         ) in
             guard let info = clientCallBackInfo else { return }
-            let monitor = Unmanaged<ApplicationDirectoryMonitor>.fromOpaque(info).takeUnretainedValue()
+            guard let monitor = Unmanaged<CallbackBox>.fromOpaque(info).takeUnretainedValue().monitor else { return }
             monitor.handleFSEvents(numEvents: numEvents, eventPaths: eventPaths, eventFlags: eventFlags)
         }
 
@@ -90,8 +109,10 @@ nonisolated final class ApplicationDirectoryMonitor {
 
         guard let stream = eventStream else {
             logger.error("Failed to create FSEvent stream")
+            box.release()
             return
         }
+        callbackBox = box
 
         FSEventStreamSetDispatchQueue(stream, queue)
 
@@ -100,11 +121,17 @@ nonisolated final class ApplicationDirectoryMonitor {
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
             eventStream = nil
+            callbackBox?.release()
+            callbackBox = nil
         }
     }
 
     /// Stop monitoring the application directories
     func stopMonitoring() {
+        onQueue(stopOnQueue)
+    }
+
+    private func stopOnQueue() {
         guard let stream = eventStream else {
             return
         }
@@ -113,6 +140,8 @@ nonisolated final class ApplicationDirectoryMonitor {
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
         eventStream = nil
+        callbackBox?.release()
+        callbackBox = nil
 
         // Cancel any pending debounce timer
         debounceWorkItem?.cancel()

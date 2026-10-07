@@ -276,8 +276,9 @@ final class AppState: ObservableObject {
         let showSystemApps = preferences.showSystemApps
         changedPaths?.forEach { AppIconCache.shared.invalidate(path: $0) }
         let startedAt = ContinuousClock.now
+        // The scan does not need AppState; holding it only for the hop back avoids keeping a
+        // released AppState alive for the whole disk scan.
         discoveryTask = Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self else { return }
             let discovered: [DiscoveredApp]
             if let changedPaths {
                 discovered = discoveryService.refreshApplications(changedPaths: changedPaths,
@@ -286,8 +287,8 @@ final class AppState: ObservableObject {
                 discovered = discoveryService.discoverApplications(showSystemApps: showSystemApps)
             }
             guard !Task.isCancelled else { return }
-            await self.handleDiscoveredApps(discovered, generation: requestGeneration,
-                                             elapsed: startedAt.duration(to: .now))
+            await self?.handleDiscoveredApps(discovered, generation: requestGeneration,
+                                              elapsed: startedAt.duration(to: .now))
         }
     }
 
