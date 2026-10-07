@@ -189,9 +189,12 @@ final class AppState: ObservableObject {
             guard let self else { return [] }
             let preferredFallbackIDs = self.allApps().map { "application:\($0.identifier)" }
                 + self.indexedItems.map(\.id)
-            return IntentCandidateSelector.select(query: query, index: self.unifiedSearchIndex,
-                                                  catalog: self.searchItemsByIdentifier,
-                                                  preferredFallbackIdentifiers: preferredFallbackIDs)
+            let index = self.unifiedSearchIndex
+            let catalog = self.searchItemsByIdentifier
+            return await Task.detached(priority: .userInitiated) {
+                IntentCandidateSelector.select(query: query, index: index, catalog: catalog,
+                                               preferredFallbackIdentifiers: preferredFallbackIDs)
+            }.value
         }
         actionController.appProvider = { [weak self] identifier in
             self?.appsByIdentifier[identifier].map { URL(fileURLWithPath: $0.path) }
@@ -225,6 +228,17 @@ final class AppState: ObservableObject {
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] shortcuts in self?.rebuildUnifiedIndex(approvedShortcuts: shortcuts) }
+            .store(in: &cancellables)
+        // Every way the query changes (typing, deep links, programmatic resets) reaches AI search.
+        $searchQuery
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] query in self?.searchController.handleQueryChange(query) }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                Task { await self?.searchController.refreshAvailability() }
+            }
             .store(in: &cancellables)
         // Turning history off also deletes what was already captured.
         preferences.$clipboardEnabled
@@ -461,10 +475,6 @@ final class AppState: ObservableObject {
     }
 
     // Called when search query changes - handles semantic search state
-    func handleSearchQueryChange(_ query: String) {
-        searchController.handleQueryChange(query)
-    }
-
     func appsMatchingSearch() -> [DiscoveredApp] {
         // This is now a pure function without side effects
         guard !searchQuery.isEmpty else {

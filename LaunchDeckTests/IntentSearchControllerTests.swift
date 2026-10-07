@@ -20,7 +20,35 @@ private final class MockIntentSearcher: IntentSearching {
 }
 
 @MainActor
+private final class ChangingAvailabilitySearcher: IntentSearching {
+    var state: IntentSearchAvailability
+    let result: [IntentRecommendation]
+    init(state: IntentSearchAvailability, result: [IntentRecommendation]) {
+        self.state = state
+        self.result = result
+    }
+    func availability() -> IntentSearchAvailability { state }
+    func search(query: String, candidates: [SearchItemCandidate]) async throws -> [IntentRecommendation] { result }
+}
+
+@MainActor
 final class IntentSearchControllerTests: XCTestCase {
+    func testQueryRechecksAvailabilityAfterModelBecomesReady() async throws {
+        let expected = IntentRecommendation(targetIdentifier: "application:app", actionIdentifier: "open.application",
+                                            confidence: 0.9, reason: "Ready now", requiresConfirmation: false)
+        let searcher = ChangingAvailabilitySearcher(state: .unavailable(.modelNotReady), result: [expected])
+        let controller = SemanticSearchController(searcher: searcher, debounce: .zero, timeout: .seconds(1))
+        controller.initialize()
+        try await Task.sleep(for: .milliseconds(10))
+        XCTAssertFalse(controller.isAvailable)
+
+        searcher.state = .available
+        controller.handleQueryChange("/edit an image")
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(controller.isAvailable)
+        XCTAssertEqual(controller.results, [expected])
+    }
+
     func testUnavailableSearcherNeverClaimsAvailability() async {
         let controller = SemanticSearchController(
             searcher: MockIntentSearcher(state: .unavailable(.requiresMacOS26))

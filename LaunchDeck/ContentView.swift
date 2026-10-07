@@ -66,8 +66,6 @@ struct ContentView: View {
         .onChange(of: searchText) { _, newValue in
             if appState.searchQuery != newValue {
                 appState.searchQuery = newValue
-                // Handle semantic search state based on input
-                appState.handleSearchQueryChange(newValue)
             }
             refreshSearchResults()
         }

@@ -5,17 +5,24 @@ nonisolated enum IntentCandidateSelector {
                        index: UnifiedSearchIndex,
                        catalog: [String: SearchItem],
                        preferredFallbackIdentifiers: [String],
-                       limit: Int = 40) -> [SearchItemCandidate] {
+                       limit: Int = defaultLimit) -> [SearchItemCandidate] {
         guard limit > 0 else { return [] }
         let ranked = index.search(query, limit: limit)
-        let rankedIDs = Set(ranked.map(\.item.id))
-        var seen = Set<String>()
-        let fallback = (preferredFallbackIdentifiers + catalog.keys.sorted()).compactMap { identifier -> SearchItem? in
-            guard !rankedIDs.contains(identifier), seen.insert(identifier).inserted else { return nil }
-            return catalog[identifier]
+        var candidates = ranked.map { SearchItemCandidate(item: $0.item, localScore: $0.score) }
+        var seen = Set(candidates.map(\.id))
+        func appendFallback(_ identifiers: some Sequence<String>) {
+            for identifier in identifiers where candidates.count < limit {
+                guard seen.insert(identifier).inserted, let item = catalog[identifier] else { continue }
+                candidates.append(SearchItemCandidate(item: item, localScore: 0))
+            }
         }
-        return Array((ranked.map { SearchItemCandidate(item: $0.item, localScore: $0.score) }
-                      + fallback.map { SearchItemCandidate(item: $0, localScore: 0) })
-            .prefix(limit))
+        appendFallback(preferredFallbackIdentifiers)
+        // Sorting the whole catalog is only needed when preferred items cannot fill the list.
+        if candidates.count < limit { appendFallback(catalog.keys.sorted()) }
+        return candidates
     }
+
+    /// Kept small so candidates, the action registry, instructions and up to eight structured
+    /// matches fit in the on-device model's 4,096-token context window.
+    static let defaultLimit = 20
 }

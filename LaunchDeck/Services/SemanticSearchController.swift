@@ -10,7 +10,7 @@ final class SemanticSearchController: ObservableObject {
     @Published private(set) var results: [IntentRecommendation] = []
     @Published private(set) var phase: IntentSearchPhase = .idle
     @Published private(set) var availability: IntentSearchAvailability = .checking
-    var candidatesProvider: (String) -> [SearchItemCandidate] = { _ in [] }
+    var candidatesProvider: (String) async -> [SearchItemCandidate] = { _ in [] }
 
     private let searcher: any IntentSearching
     private let debounce: Duration
@@ -33,7 +33,15 @@ final class SemanticSearchController: ObservableObject {
     var isSearching: Bool { phase == .waiting || phase == .searching }
 
     func initialize() {
-        Task { availability = await searcher.availability() }
+        Task { await refreshAvailability() }
+    }
+
+    /// Availability changes while the app runs (the model finishes downloading, Apple
+    /// Intelligence is turned on), so it is re-read on app activation and whenever an AI query
+    /// arrives while unavailable.
+    func refreshAvailability() async {
+        let latest = await searcher.availability()
+        if latest != availability { availability = latest }
     }
 
     func handleQueryChange(_ rawQuery: String) {
@@ -43,7 +51,17 @@ final class SemanticSearchController: ObservableObject {
         guard rawQuery.hasPrefix("/") else { reset(); return }
         let query = String(rawQuery.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { reset(); return }
-        guard isAvailable else { results = []; phase = .idle; return }
+        guard isAvailable else {
+            results = []
+            phase = .idle
+            Task { [weak self] in
+                guard let self else { return }
+                await self.refreshAvailability()
+                // Run the query that was waiting, unless the user has typed since.
+                if self.isAvailable, requestGeneration == self.generation { self.handleQueryChange(rawQuery) }
+            }
+            return
+        }
 
         let debounce = self.debounce
         let timeout = self.timeout
@@ -54,7 +72,8 @@ final class SemanticSearchController: ObservableObject {
                 guard !Task.isCancelled, let self, requestGeneration == self.generation else { return }
                 self.phase = .searching
                 let startedAt = ContinuousClock.now
-                let candidates = self.candidatesProvider(query)
+                let candidates = await self.candidatesProvider(query)
+                guard !Task.isCancelled, requestGeneration == self.generation else { return }
                 let found = try await withThrowingTaskGroup(of: [IntentRecommendation].self) { group in
                     group.addTask { try await self.searcher.search(query: query, candidates: candidates) }
                     group.addTask {

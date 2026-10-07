@@ -77,15 +77,31 @@ actor FoundationModelsIntentSearcher: IntentSearching {
 
     func search(query: String, candidates: [SearchItemCandidate]) async throws -> [IntentRecommendation] {
         guard case .available = availability(), !candidates.isEmpty else { return [] }
-        let candidateText = candidates.map { candidate in
-            let item = candidate.item
-            return "ID: \(item.id) | Type: \(item.kind.rawValue) | Name: \(item.title) | Metadata: \(item.subtitle ?? "") | Keywords: \(item.keywords.prefix(8).joined(separator: ", "))"
-        }.joined(separator: "\n")
+        do {
+            return try await respond(query: query, candidates: candidates)
+        } catch LanguageModelSession.GenerationError.exceededContextWindowSize where candidates.count > 4 {
+            // Long titles or paths can still overflow 4,096 tokens: retry once with half the candidates.
+            logger.notice("Intent prompt exceeded the context window with \(candidates.count) candidates; retrying")
+            return try await respond(query: query, candidates: Array(candidates.prefix(candidates.count / 2)))
+        }
+    }
+
+    nonisolated static func candidateLine(_ item: SearchItem) -> String {
+        let metadata = item.subtitle.map { subtitle in
+            // Paths are the longest metadata; the last two components carry the useful context.
+            let components = subtitle.split(separator: "/")
+            return components.count > 2 ? "…/" + components.suffix(2).joined(separator: "/") : subtitle
+        } ?? ""
+        return "ID: \(item.id) | Type: \(item.kind.rawValue) | Name: \(String(item.title.prefix(60))) | Metadata: \(String(metadata.prefix(60))) | Keywords: \(item.keywords.prefix(4).joined(separator: ", "))"
+    }
+
+    private func respond(query: String, candidates: [SearchItemCandidate]) async throws -> [IntentRecommendation] {
+        let candidateText = candidates.map { Self.candidateLine($0.item) }.joined(separator: "\n")
         let actions = ActionRegistry.shared.descriptors.map {
             "ID: \($0.id) | Name: \($0.title) | Required parameters: \($0.requiredParameters.sorted().joined(separator: ", ")) | Confirmation: \($0.requiresConfirmation)"
         }.joined(separator: "\n")
         let prompt = """
-        The user wants to: <user-intent>\(query)</user-intent>
+        The user wants to: <user-intent>\(String(query.prefix(200)))</user-intent>
         Select a target only from the candidates and an action only from the registry. Never invent identifiers.
         Return parameters needed by the action and list any required values that are not safely inferable.
         Rank recommendations by how directly they accomplish the intent. Return an empty list when none fit.
