@@ -10,7 +10,14 @@ Repository: <https://github.com/everettjf/launchdeck>
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eGzEaP6TzR)
 
-A private, local-first macOS launcher that combines Spotlight-style file discovery, Raycast-style actions, and LaunchBar-style workflows in one instant searchable index—with optional on-device intent search.
+A private, local-first macOS launcher: unlike Spotlight it acts on what it finds (batch rename, move, compress and Trash with one-step Undo, saved as reusable recipes), and unlike Raycast everything—your index, history and the default on-device AI—stays on your Mac with no account and no code-running extensions, all from one index that answers in about 2.5 ms across 200,000 items.
+
+## Compared with Spotlight, Raycast and LaunchBar
+
+- **Compared with Spotlight:** the same kind of local discovery across apps, files, folders, projects and settings, plus a keyboard-first Object → Action → Target navigator, batch file actions with one-step Undo, search qualifiers (`kind:file`, `ext:pdf`, `path:Documents`, `app:Safari`), and chains saved as reusable recipes.
+- **Compared with Raycast:** nothing leaves the Mac by default and there is no account to create. Extensions are declarative manifests with a permission review on every upgrade, not TypeScript programs, so an extension cannot run arbitrary code. Intent search uses Apple's on-device model; an external AI provider is used only when a recipe explicitly opts in.
+- **Compared with LaunchBar:** Instant Send and multi-step action chains in a free, MIT-licensed app, alongside a Launchpad-style app grid with folders and optional AI intent search.
+- **Fast without AI:** ordinary fuzzy search never waits on a model. On the repeatable 100k-app benchmark the unified index answers in about 2.5 ms at p95 across 200,000 items ([performance validation](docs/performance-validation.md)).
 
 LaunchDeck is distributed directly with Developer ID signing through Homebrew and GitHub Releases. It no longer supports or ships through the Mac App Store. Its bundle identifier is `com.everettjf.launchdeck`; the former `com.xnu.startmyapp` identity is retired.
 
