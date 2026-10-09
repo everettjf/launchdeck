@@ -1,9 +1,217 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LaunchDeck — A keyboard-first Mac app launcher</title><meta name="description" content="Launch Mac apps quickly with fuzzy search, custom organization, and optional on-device Apple Intelligence semantic search."><link rel="canonical" href="https://xnu.app/launchdeck/"><link rel="icon" type="image/png" href="https://raw.githubusercontent.com/everettjf/launchdeck/main/LaunchDeck/Assets.xcassets/AppIcon.appiconset/appicon_32x32@2x.png"><link rel="apple-touch-icon" href="https://raw.githubusercontent.com/everettjf/launchdeck/main/LaunchDeck/Assets.xcassets/AppIcon.appiconset/appicon_128x128@2x.png"><meta property="og:title" content="LaunchDeck"><meta property="og:description" content="A fast, private, keyboard-first application launcher for macOS."><meta property="og:type" content="website"><meta property="og:url" content="https://xnu.app/launchdeck/"><meta property="og:image" content="https://raw.githubusercontent.com/everettjf/launchdeck/main/Design/AppIcon-v6-master.png"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="copy-command.css"></head>
-<body><header class="wrap nav"><a class="brand" href="./">LaunchDeck</a><nav aria-label="Main navigation"><a href="#features">Features</a><a href="#install">Install</a><a href="https://github.com/everettjf/launchdeck">GitHub</a><a href="https://discord.gg/eGzEaP6TzR">Discord</a></nav></header>
-<main><section class="wrap hero"><div><div class="eyebrow">Open source · Native macOS · Local first</div><h1>Your apps,<br>one shortcut away.</h1><p class="lede">LaunchDeck keeps app discovery fast and keyboard-first, with fuzzy search, your own organization, and optional on-device semantic search.</p><div class="actions"><a class="button primary" href="#install">Install with Homebrew ↓</a><a class="button" href="https://github.com/everettjf/launchdeck/releases/latest" target="_blank" rel="noopener noreferrer">Download ZIP ↗</a></div></div><div class="shot"><img src="https://raw.githubusercontent.com/everettjf/launchdeck/main/screenshot.png" alt="LaunchDeck application launcher on macOS"></div></section>
-<section class="promise"><div class="wrap"><strong>Fast without AI. Smarter when you ask.</strong><span>Ordinary fuzzy search is instant and local. Prefix a query with <code>/</code> to use Apple Intelligence semantic search on supported Macs.</span></div></section>
-<section class="section" id="features"><div class="wrap"><div class="label">Built for daily launching</div><h2>Less hunting. More opening.</h2><div class="grid"><article class="card"><b>Global shortcut</b><p>Bring LaunchDeck forward from anywhere and launch without reaching for the mouse.</p></article><article class="card"><b>Fast fuzzy search</b><p>Find applications from names, fragments, and abbreviations with local ranking.</p></article><article class="card"><b>Your own layout</b><p>Reorder apps, create folders, hide clutter, and keep favorites close.</p></article><article class="card"><b>Useful recents</b><p>Sort by recent or frequent launches while retaining full manual control.</p></article><article class="card"><b>Optional semantic search</b><p>Describe the kind of app you need using Apple’s on-device Foundation Models.</p></article><article class="card"><b>Private by default</b><p>Launch history and organization stay on your Mac; the app has no network entitlement.</p></article></div></div></section>
-<section class="section install" id="install"><div class="wrap"><div class="label">Install</div><h2>One command. Ready to launch.</h2><div class="install-grid"><div><p class="lede">Install the signed and Apple-notarized release from the official Homebrew tap.</p><div class="terminal" role="group" aria-label="Homebrew installation command"><span aria-hidden="true">$</span><code>brew install --cask everettjf/tap/launchdeck</code><button class="copy-button" type="button" data-copy="brew install --cask everettjf/tap/launchdeck" aria-label="Copy Homebrew installation command">Copy</button></div><p class="install-note">Already installed? Run <code>brew upgrade --cask launchdeck</code> to update.</p></div><div class="install-alt"><b>Prefer a direct download?</b><p>Download the notarized ZIP from GitHub Releases and move LaunchDeck to Applications.</p><a class="button" href="https://github.com/everettjf/launchdeck/releases/latest" target="_blank" rel="noopener noreferrer">GitHub Releases ↗</a></div></div></div></section>
-<section class="cta"><div class="wrap box"><h2>Open your next app before Spotlight catches up.</h2><div class="actions"><a class="button primary" href="#install">Install with Homebrew</a><a class="button" href="https://github.com/everettjf/launchdeck">View source ↗</a></div></div></section></main>
-<footer class="footer"><div class="wrap"><span>LaunchDeck is open source.</span><span><a href="https://xnu.app/">All projects</a><a href="https://xnu.app/launchdeck/privacy/">Privacy</a><a href="https://discord.gg/eGzEaP6TzR">Discord</a></span></div></footer><script src="copy-command.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LaunchDeck — a fast, private launcher for Mac</title>
+  <meta name="description" content="LaunchDeck opens your apps, finds your files and projects, and acts on them from one shortcut. Few features, done reliably, all on your Mac.">
+  <link rel="canonical" href="https://xnu.app/launchdeck/">
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/everettjf/launchdeck/main/LaunchDeck/Assets.xcassets/AppIcon.appiconset/appicon_32x32@2x.png">
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/everettjf/launchdeck/main/LaunchDeck/Assets.xcassets/AppIcon.appiconset/appicon_128x128@2x.png">
+  <meta property="og:title" content="LaunchDeck">
+  <meta property="og:description" content="A fast, private launcher for Mac. Few features, done reliably.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://xnu.app/launchdeck/">
+  <meta property="og:image" content="https://raw.githubusercontent.com/everettjf/launchdeck/main/Design/AppIcon-v6-master.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="copy-command.css">
+</head>
+<body>
+  <header class="wrap nav">
+    <a class="brand" href="./">LaunchDeck</a>
+    <nav aria-label="Main navigation">
+      <a href="#features">What it does</a>
+      <a href="#extensions">Extensions</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/everettjf/launchdeck">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="wrap hero">
+      <div>
+        <div class="eyebrow">Free · Open source · Runs on your Mac</div>
+        <h1>Open anything.<br>Get back to work.</h1>
+        <p class="lede">LaunchDeck does a few things and does them reliably: it opens your apps, finds your files and projects, and acts on them, all from one shortcut and all on your Mac.</p>
+        <div class="actions">
+          <a class="button primary" href="#install">Install with Homebrew ↓</a>
+          <a class="button" href="https://github.com/everettjf/launchdeck/releases/latest" target="_blank" rel="noopener noreferrer">Download ZIP ↗</a>
+        </div>
+      </div>
+      <div class="shot">
+        <img src="https://raw.githubusercontent.com/everettjf/launchdeck/main/screenshot.png" alt="LaunchDeck showing search results for apps and files on macOS">
+      </div>
+    </section>
+
+    <section class="promise">
+      <div class="wrap">
+        <strong>Few features, done well.</strong>
+        <span>No account, no cloud, no plugins that run code. Every change runs the full test suite and a 100,000-app performance check before it ships.</span>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <div class="label">What it does</div>
+        <h2>Four jobs, one shortcut.</h2>
+        <div class="grid two">
+          <article class="card">
+            <b>1. Launch apps</b>
+            <p>Press your shortcut, type a few letters, press Return. Arrange apps in your own grid with folders, hide what you never use, and sort by recent or most launched.</p>
+          </article>
+          <article class="card">
+            <b>2. Find files and projects</b>
+            <p>Choose the folders to index and LaunchDeck finds documents, Xcode projects and Git repositories in them. Narrow a search with <code>kind:file</code>, <code>ext:pdf</code> or <code>path:Documents</code>.</p>
+          </article>
+          <article class="card">
+            <b>3. Act on what you find</b>
+            <p>Rename, move, duplicate, zip or move to Trash, one item or many, with one-step Undo. Selected files in Finder and the current browser tab come along when you open LaunchDeck.</p>
+          </article>
+          <article class="card">
+            <b>4. Ask in plain words (optional)</b>
+            <p>Start a search with <code>/</code> and describe what you want, such as <code>/edit a photo</code>. It uses Apple’s on-device model, and it only suggests apps, files and actions you already have.</p>
+          </article>
+        </div>
+        <p class="aside">Also included: clipboard history (off until you turn it on), text snippets, window halves and quarters, and saved multi-step recipes.</p>
+      </div>
+    </section>
+
+    <section class="section alt" id="reliable">
+      <div class="wrap">
+        <div class="label">Why it stays dependable</div>
+        <h2>Built to be boring in the best way.</h2>
+        <div class="grid">
+          <article class="card">
+            <b>Fast without AI</b>
+            <p>Ordinary search never waits on a model. In the repeatable benchmark it answers in about 2.5 ms (p95) across 200,000 items.</p>
+          </article>
+          <article class="card">
+            <b>Careful with your files</b>
+            <p>Deletes go to the Trash, every file action can be undone, and an action stops with a clear error if a file has moved instead of half-finishing.</p>
+          </article>
+          <article class="card">
+            <b>Checked before every release</b>
+            <p>Each release passes the test suite and the performance check, and is signed with Developer ID and notarized by Apple.</p>
+          </article>
+          <article class="card">
+            <b>Private by design</b>
+            <p>No account, analytics or ads. Your index and history stay on your Mac, and one button in Settings clears them all.</p>
+          </article>
+          <article class="card">
+            <b>No surprise network use</b>
+            <p>LaunchDeck only connects to the internet if you add your own AI provider for a recipe. Web links open in your browser.</p>
+          </article>
+          <article class="card">
+            <b>Your clipboard is left alone</b>
+            <p>Clipboard history is off by default and skips passwords copied from password managers. The shortcut restores whatever you had copied.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="extensions">
+      <div class="wrap">
+        <div class="label">Extensions</div>
+        <h2>Small on purpose.</h2>
+        <div class="split">
+          <div>
+            <p class="lede">An extension is a short JSON file that adds commands to search. It can’t run code, read your files or change your system, so installing one can’t harm your Mac.</p>
+            <table class="kinds">
+              <thead><tr><th>Command</th><th>What it does</th><th>Example</th></tr></thead>
+              <tbody>
+                <tr><td><code>quicklink</code></td><td>Type a keyword and a term to search a website</td><td><code>swift async</code> searches Apple’s docs</td></tr>
+                <tr><td><code>openURL</code></td><td>Open a web page by name</td><td>“Open GitHub”</td></tr>
+                <tr><td><code>staticText</code></td><td>Copy a saved piece of text</td><td>“Copy Swift Test Command”</td></tr>
+              </tbody>
+            </table>
+            <p class="aside">Install from <b>Settings → Extensions → Install Manifest…</b>. If an update asks for more permissions, LaunchDeck shows you the change first. Need multi-step automation instead? Use a recipe.</p>
+            <a class="button" href="https://github.com/everettjf/launchdeck/tree/main/Examples/Extensions" target="_blank" rel="noopener noreferrer">Example extensions ↗</a>
+          </div>
+          <pre class="snippet" aria-label="Example extension manifest"><code>{
+  "schemaVersion": 2,
+  "id": "com.example.docs",
+  "name": "Docs Search",
+  "version": "1.0.0",
+  "permissions": ["network"],
+  "commands": [
+    {
+      "id": "swift",
+      "name": "Search Swift Docs",
+      "kind": "quicklink",
+      "keyword": "swift",
+      "value": "https://developer.apple.com/search/?q={query}"
+    }
+  ]
+}</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section alt" id="compare">
+      <div class="wrap">
+        <div class="label">How it compares</div>
+        <h2>What LaunchDeck adds.</h2>
+        <div class="grid">
+          <article class="card">
+            <b>Next to Spotlight</b>
+            <p>The same quick local search, plus file actions with Undo, search filters such as <code>ext:pdf</code>, and steps you can save as a recipe.</p>
+          </article>
+          <article class="card">
+            <b>Next to Raycast</b>
+            <p>Nothing to sign in to, and nothing leaves your Mac by default. Extensions are declarations, not TypeScript programs.</p>
+          </article>
+          <article class="card">
+            <b>Next to LaunchBar</b>
+            <p>Send-to-action workflows in a free, MIT-licensed app, with a Launchpad-style grid and folders.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section install" id="install">
+      <div class="wrap">
+        <div class="label">Install</div>
+        <h2>One command. Ready to launch.</h2>
+        <div class="install-grid">
+          <div>
+            <p class="lede">Install the signed, Apple-notarized release from the official Homebrew tap. Requires macOS 26 or later.</p>
+            <div class="terminal" role="group" aria-label="Homebrew installation command">
+              <span aria-hidden="true">$</span>
+              <code>brew install --cask everettjf/tap/launchdeck</code>
+              <button class="copy-button" type="button" data-copy="brew install --cask everettjf/tap/launchdeck" aria-label="Copy Homebrew installation command">Copy</button>
+            </div>
+            <p class="install-note">Update with <code>brew upgrade --cask launchdeck</code>. Remove with <code>brew uninstall --cask launchdeck</code>.</p>
+          </div>
+          <div class="install-alt">
+            <b>Prefer a direct download?</b>
+            <p>Download the notarized ZIP from GitHub Releases and move LaunchDeck to Applications.</p>
+            <a class="button" href="https://github.com/everettjf/launchdeck/releases/latest" target="_blank" rel="noopener noreferrer">GitHub Releases ↗</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="wrap box">
+        <h2>Try it for a day. If it isn’t for you, one command removes it.</h2>
+        <div class="actions">
+          <a class="button primary" href="#install">Install with Homebrew</a>
+          <a class="button" href="https://github.com/everettjf/launchdeck">View source ↗</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>LaunchDeck is free and open source under the MIT License.</span>
+      <span>
+        <a href="https://xnu.app/">All projects</a>
+        <a href="https://xnu.app/launchdeck/privacy/">Privacy</a>
+        <a href="https://discord.gg/eGzEaP6TzR">Discord</a>
+      </span>
+    </div>
+  </footer>
+  <script src="copy-command.js"></script>
+</body>
+</html>
