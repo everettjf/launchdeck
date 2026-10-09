@@ -37,9 +37,11 @@ struct OnboardingView: View {
     @ViewBuilder private var pageContent: some View {
         switch page {
         case 0:
-            onboardingPage(icon: nil, title: "Send anything. Do anything.",
-                           detail: "LaunchDeck combines instant local search with a transparent Object → Action → Target workflow. Every file-changing action is previewed, and supported operations can be undone.") {
-                Label("Search remains fully functional without AI or a network connection.", systemImage: "lock.shield")
+            onboardingPage(icon: nil, title: "Open anything. Get back to work.",
+                           detail: "Unlike Spotlight, LaunchDeck acts on what it finds. Unlike Raycast, everything stays on your Mac, with no account and no extensions that run code.") {
+                Label("Rename, move, zip or Trash files in batches, then undo in one step.", systemImage: "arrow.uturn.backward.circle")
+                Label("Search is instant and works without AI or a network.", systemImage: "bolt")
+                Label("Your history stays on this Mac. Clear it anytime in Settings.", systemImage: "lock.shield")
             }
         case 1:
             onboardingPage(icon: "command.circle.fill", title: "Capture your current context",
