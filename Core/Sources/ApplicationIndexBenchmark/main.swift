@@ -23,16 +23,20 @@ defer { try? FileManager.default.removeItem(at: root) }
 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
 for index in 0..<appCount {
-    let contents = root.appendingPathComponent("App\(index).app/Contents")
-    try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
-    let plist: [String: Any] = [
-        "CFBundleIdentifier": "benchmark.app\(index)",
-        "CFBundleName": "Benchmark App \(index)",
-        "CFBundlePackageType": "APPL",
-        "CFBundleVersion": "1",
-    ]
-    let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .binary, options: 0)
-    try data.write(to: contents.appendingPathComponent("Info.plist"))
+    // Fixture construction must not retain Foundation temporaries across 100,000 apps.
+    // Measure the indexes rather than autoreleased plist buffers from the test setup.
+    try autoreleasepool {
+        let contents = root.appendingPathComponent("App\(index).app/Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        let plist: [String: Any] = [
+            "CFBundleIdentifier": "benchmark.app\(index)",
+            "CFBundleName": "Benchmark App \(index)",
+            "CFBundlePackageType": "APPL",
+            "CFBundleVersion": "1",
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .binary, options: 0)
+        try data.write(to: contents.appendingPathComponent("Info.plist"))
+    }
 }
 
 let service = ApplicationDiscoveryService(searchPaths: [root])
