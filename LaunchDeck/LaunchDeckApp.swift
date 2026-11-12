@@ -57,7 +57,7 @@ struct LaunchDeckApp: App {
                     sendSupportEmail()
                 }
                 Button("\(Bundle.main.appDisplayName) Help") {
-                    if let url = URL(string: "https://xnu.app/launchdeck/") {
+                    if let url = URL(string: "https://atomsprout.com/launchdeck/") {
                         NSWorkspace.shared.open(url)
                     }
                 }
@@ -108,7 +108,7 @@ struct LaunchDeckApp: App {
         let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
 
-        if let url = URL(string: "mailto:xnuapp@gmail.com?subject=\(encodedSubject)&body=\(encodedBody)") {
+        if let url = URL(string: "mailto:atomsprout@gmail.com?subject=\(encodedSubject)&body=\(encodedBody)") {
             NSWorkspace.shared.open(url)
         }
     }

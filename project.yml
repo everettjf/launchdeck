@@ -25,7 +25,7 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         LSUIElement: true
         NSAppleEventsUsageDescription: LaunchDeck reads the current Finder selection or browser tab when you press the LaunchDeck shortcut, so you can act on it.
-        NSHumanReadableCopyright: ""
+        NSHumanReadableCopyright: "Copyright © 2026 AtomSprout. All rights reserved."
         CFBundleURLTypes:
           - CFBundleURLName: com.everettjf.launchdeck.recipe
             CFBundleURLSchemes:

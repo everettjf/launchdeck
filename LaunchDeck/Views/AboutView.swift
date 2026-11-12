@@ -33,10 +33,10 @@ struct AboutView: View {
 
             VStack(spacing: 8) {
                 Link("Discord", destination: URL(string: "https://discord.gg/eGzEaP6TzR")!)
-                if let url = URL(string: "https://xnu.app/launchdeck/") {
+                if let url = URL(string: "https://atomsprout.com/launchdeck/") {
                     Link("Support & Feedback", destination: url)
                 }
-                if let url = URL(string: "https://xnu.app/launchdeck/privacy/") {
+                if let url = URL(string: "https://atomsprout.com/launchdeck/privacy/") {
                     Link("Privacy Policy", destination: url)
                 }
             }
@@ -47,7 +47,7 @@ struct AboutView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            if let url = URL(string: "https://xnu.app") {
+            if let url = URL(string: "https://atomsprout.com") {
                 Link("More Apps", destination: url)
             }
         }

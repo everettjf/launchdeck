@@ -6,7 +6,7 @@
 
 Repository: <https://github.com/everettjf/launchdeck>
 
-[Website](https://xnu.app/launchdeck/) · [Discord](https://discord.gg/eGzEaP6TzR)
+[Website](https://atomsprout.com/launchdeck/) · [Discord](https://discord.gg/eGzEaP6TzR)
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eGzEaP6TzR)
 
